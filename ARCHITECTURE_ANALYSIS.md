@@ -53,7 +53,7 @@ Multimax AI Hub is an ambitious project aiming to build a unified "AI Operating 
 
 | Component | Issue |
 |-----------|-------|
-| **Authentication** | `AuthContext.tsx` references `supabase` client, but Supabase free tier has limits. No Better Auth / Auth.js integration |
+| **Authentication** | `AuthContext.tsx` references `supabase` client, but Supabase free tier has limits. No better-auth / Auth.js integration |
 | **AI Chat Backend** | `frontend/src/pages/AIChat.tsx` exists but no backend `app/modules/chat/` module |
 | **RAG Service** | `backend/services/rag_service.py` references ChromaDB but no proper module structure |
 | **API Client** | `frontend/src/lib/api.ts` exists but needs alignment with new module-based backend routers |
@@ -163,9 +163,9 @@ frontend/src/
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
-| **R1 — Module discovery path mismatch** | `ModuleLoader.discover("app")` may not find `app.workspace` correctly because workspace is a subpackage of `app`, not under `app.modules/`. The `pkgutil.iter_modules` on `app.__path__` will find `workspace` as a subpackage, but the subsequent `importlib.import_module("app.workspace")` and attribute check for `module_info` should work. **Need to verify.** | Test module discovery immediately. If broken, change discovery to scan `app` directly or move modules to `app/modules/`. |
+| **R1 — Module discovery path mismatch** | `ModuleLoader.discover("app")` may not find `app.workspace` correctly because workspace is a subpackage of `app`, not under `app/modules/`. The `pkgutil.iter_modules` on `app.__path__` will find `workspace` as a subpackage, but the subsequent `importlib.import_module("app.workspace")` and attribute check for `module_info` should work. **Need to verify.** | Test module discovery immediately. If broken, change discovery to scan `app` directly or move modules to `app/modules/`. |
 | **R2 — Circular imports** | `workspace/models.py` → `database.py` → `config.py` chain. The `workspace/__init__.py` imports from `models`, `service`, `api` — if any of those import back from `workspace/__init__`, circular import will occur. | Enforce that `__init__.py` is the aggregator, not the source. Model files should not import from `__init__`. |
-| **R3 — Authentication dependency on Supabase** | Supabase free tier has limits (50,000 monthly active users, 500 MB database, 1 GB bandwidth). For a self-hosted platform, users must set up their own Supabase instance, which adds complexity. Better Auth (open-source) would be more appropriate. | Migrate from Supabase Auth to Better Auth / Auth.js for core auth. Keep Supabase as optional storage backend. |
+| **R3 — Authentication dependency on Supabase** | Supabase free tier has limits (50,000 monthly active users, 500 MB database, 1 GB bandwidth). For a self-hosted platform, users must set up their own Supabase instance, which adds complexity. Better Auth (open-source) would be more appropriate. | Migrate from Supabase Auth to better-auth / Auth.js for core auth. Keep Supabase as optional storage backend. |
 | **R4 — No database migration system** | `create_all()` is called on every startup in dev mode. This is unsafe for production — schema changes will cause data loss. No alembic integration. | Add Alembic for migration management. This is critical before Phase 0 completion. |
 | **R5 — Missing environment validation at startup** | The app starts in "degraded mode" if DB fails, but many settings are unchecked (e.g., invalid Ollama URL, missing upload dir). Silent failures will cause confusing runtime errors. | Add a startup validation system that checks all external dependencies and settings. |
 | **R6 — Legacy `backend/main.py` conflict** | Both `backend/main.py` and `backend/app/main.py` exist. The Dockerfile may reference the wrong one. | Verify Dockerfile points to `app.main:create_app` and archive the legacy file. |
