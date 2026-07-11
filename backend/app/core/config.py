@@ -33,32 +33,42 @@ class Settings(BaseSettings):
     LOG_MAX_BYTES: int = Field(default=10485760, alias="LOG_MAX_BYTES")
     LOG_BACKUP_COUNT: int = Field(default=5, alias="LOG_BACKUP_COUNT")
 
-    # --- PostgreSQL ---
+    # --- Database ---
+    # Default: SQLite for zero-budget local development
+    # Override with DATABASE_URL env var for PostgreSQL in production
+    DATABASE_URL: Optional[str] = Field(
+        default=None,
+        alias="DATABASE_URL",
+        description="Full database URL. Uses SQLite by default if not set.",
+    )
+    DATABASE_URL_SYNC: Optional[str] = Field(
+        default=None,
+        alias="DATABASE_URL_SYNC",
+        description="Sync database URL (used for alembic migrations).",
+    )
+
+    # PostgreSQL (only used if DATABASE_URL is explicitly set)
     POSTGRES_HOST: str = Field(default="localhost", alias="POSTGRES_HOST")
     POSTGRES_PORT: int = Field(default=5432, alias="POSTGRES_PORT")
     POSTGRES_DB: str = Field(default="multimax", alias="POSTGRES_DB")
     POSTGRES_USER: str = Field(default="multimax", alias="POSTGRES_USER")
     POSTGRES_PASSWORD: str = Field(default="multimax_dev", alias="POSTGRES_PASSWORD")
-    DATABASE_URL: Optional[str] = Field(default=None, alias="DATABASE_URL")
-    DATABASE_URL_SYNC: Optional[str] = Field(default=None, alias="DATABASE_URL_SYNC")
 
     @property
     def database_url(self) -> str:
         if self.DATABASE_URL:
             return self.DATABASE_URL
-        return (
-            f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
-            f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
-        )
+        # Default to SQLite for zero-budget local development
+        return "sqlite+aiosqlite:///./data/multimax.db"
 
     @property
     def database_url_sync(self) -> str:
         if self.DATABASE_URL_SYNC:
             return self.DATABASE_URL_SYNC
-        return (
-            f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
-            f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
-        )
+        if self.DATABASE_URL:
+            # Build sync URL from async URL by removing +asyncpg
+            return self.DATABASE_URL.replace("+asyncpg", "").replace("+aiosqlite", "")
+        return "sqlite:///./data/multimax.db"
 
     # --- ChromaDB ---
     CHROMADB_HOST: str = Field(default="localhost", alias="CHROMADB_HOST")

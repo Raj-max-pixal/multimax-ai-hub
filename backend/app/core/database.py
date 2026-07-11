@@ -2,12 +2,20 @@
 Database Management.
 
 Provides async SQLAlchemy engine, session factory, and base model.
-Supports PostgreSQL via asyncpg driver for high-concurrency workloads.
+Supports both SQLite (local/dev) and PostgreSQL (production) backends.
+
+SQLite is the DEFAULT for zero-budget local development.
+PostgreSQL via asyncpg is used when DATABASE_URL is explicitly set.
+
+Database URL formats:
+  - SQLite (default): sqlite+aiosqlite:///./data/multimax.db
+  - PostgreSQL:       postgresql+asyncpg://user:pass@host:5432/multimax
 """
 
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import AsyncGenerator, AsyncIterator, Optional
 
 from sqlalchemy.ext.asyncio import (
@@ -48,30 +56,69 @@ class DatabaseManager:
         self._initialized = False
 
     async def initialize(self) -> None:
-        """Create the database engine and session factory."""
+        """Create the database engine and session factory.
+
+        Automatically detects the backend from the database_url setting.
+        Falls back to SQLite if no PostgreSQL connection is configured.
+        """
         if self._initialized:
             return
 
-        self._engine = create_async_engine(
-            self._settings.database_url,
-            echo=self._settings.APP_DEBUG,
-            poolclass=NullPool,  # Disable pooling for serverless compatibility
-            pool_pre_ping=True,
-        )
+        db_url = self._settings.database_url
 
-        self._session_factory = async_sessionmaker(
-            bind=self._engine,
-            class_=AsyncSession,
-            expire_on_commit=False,
-            autocommit=False,
-            autoflush=False,
-        )
+        # Auto-detect whether we're using PostgreSQL or SQLite
+        is_postgres = db_url.startswith("postgresql")
 
-        self._initialized = True
-        logger.info(
-            "Database engine initialized",
-            extra={"host": self._settings.POSTGRES_HOST, "db": self._settings.POSTGRES_DB},
-        )
+        # For SQLite, ensure the parent directory exists
+        if not is_postgres and db_url.startswith("sqlite"):
+            # Extract path from sqlite+aiosqlite:///./path
+            db_path_str = db_url.replace("sqlite+aiosqlite:///", "")
+            db_path = Path(db_path_str)
+            db_path.parent.mkdir(parents=True, exist_ok=True)
+            logger.info(f"SQLite database path: {db_path.absolute()}")
+
+        try:
+            self._engine = create_async_engine(
+                db_url,
+                echo=self._settings.APP_DEBUG,
+                poolclass=NullPool,
+                pool_pre_ping=is_postgres,
+            )
+
+            self._session_factory = async_sessionmaker(
+                bind=self._engine,
+                class_=AsyncSession,
+                expire_on_commit=False,
+                autocommit=False,
+                autoflush=False,
+            )
+
+            self._initialized = True
+
+            # Log connection info (sanitized for security)
+            if is_postgres:
+                db_host = self._settings.POSTGRES_HOST or "localhost"
+                db_name = self._settings.POSTGRES_DB or "multimax"
+                logger.info(
+                    "PostgreSQL engine initialized",
+                    extra={"host": db_host, "db": db_name},
+                )
+            else:
+                logger.info("SQLite engine initialized (local development mode)")
+
+        except ImportError as e:
+            # Handle missing driver gracefully
+            missing_driver = str(e).split("'")[1] if "'" in str(e) else "unknown"
+            alternative = "aiosqlite" if "asyncpg" in str(e) else "asyncpg"
+            logger.error(
+                f"Database driver '{missing_driver}' not installed. "
+                f"Install with: pip install {alternative}"
+            )
+            raise
+
+        except Exception as e:
+            logger.error(f"Failed to initialize database engine: {e}")
+            raise
 
     async def close(self) -> None:
         """Dispose of the database engine."""
@@ -86,7 +133,7 @@ class DatabaseManager:
             raise RuntimeError("Database not initialized. Call initialize() first.")
         async with self._engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-        logger.info("All database tables created")
+        logger.info("All database tables created/verified")
 
     async def drop_all(self) -> None:
         """Drop all tables (useful for testing)."""

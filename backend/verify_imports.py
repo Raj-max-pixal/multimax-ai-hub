@@ -5,29 +5,31 @@ sys.path.insert(0, '.')
 try:
     from app.core.container import Container
     from app.core.events import EventBus
-    from app.core.config import AppConfig
-    from app.core.logger import setup_logger, get_logger
-    from app.core.database import DatabaseManager, get_session
+    from app.core.config import Settings
+    from app.core.logger import setup_logging, get_logger
+    from app.core.database import DatabaseManager, get_db_session
     from app.core.exceptions import (
-        AppException,
+        MultimaxError,
         NotFoundError,
         ValidationError,
         ConfigurationError,
-        DatabaseError,
         AuthenticationError,
         AuthorizationError,
+        DuplicateError,
+        ExternalServiceError,
+        RateLimitError,
     )
     from app.core.module_loader import ModuleLoader
     from app.core.plugin_manager import PluginManager
     from app.shared.interfaces import (
-        BaseRepository,
-        BaseService,
+        RepositoryInterface,
+        ServiceInterface,
     )
     from app.workspace.models import (
         Workspace,
         Project,
         WorkspaceMember,
-        ProjectSettings,
+        ProjectFile,
     )
     from app.workspace.service import WorkspaceService
     from app.workspace.api import router as workspace_router
