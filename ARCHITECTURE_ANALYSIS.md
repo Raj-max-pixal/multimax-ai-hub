@@ -1,619 +1,632 @@
-# Multimax AI Hub — Architecture Analysis & Implementation Roadmap
+# MULTIMAX AI HUB — Architecture Analysis & Implementation Roadmap
 
-> **Date:** 2026-07-12
-> **Author:** Architecture Review
-> **Status:** Analysis Complete — Awaiting Approval
+> **Document Version:** 1.0  
+> **Date:** 2026-07-11  
+> **Author:** Architecture Review  
+> **Status:** Draft — Awaiting Approval
 
 ---
 
-## Table of Contents
+## TABLE OF CONTENTS
 
 1. [Executive Summary](#1-executive-summary)
-2. [Current Architecture Overview](#2-current-architecture-overview)
-3. [Existing Codebase Analysis](#3-existing-codebase-analysis)
-4. [Critical Risks Identified](#4-critical-risks-identified)
-5. [Medium Risks Identified](#5-medium-risks-identified)
-6. [Low Risks / Observations](#6-low-risks--observations)
-7. [Architecture Recommendations](#7-architecture-recommendations)
-8. [Phase 0 Detailed Implementation Roadmap](#8-phase-0-detailed-implementation-roadmap)
-9. [Phase 1–15 High-Level Roadmap](#9-phase-1-15-high-level-roadmap)
-10. [Technology Decisions & Justifications](#10-technology-decisions--justifications)
-11. [Zero-Budget Validation](#11-zero-budget-validation)
+2. [Current Codebase Overview](#2-current-codebase-overview)
+3. [Architecture Deep Dive](#3-architecture-deep-dive)
+4. [Critical Risks & Blockers](#4-critical-risks--blockers)
+5. [Risk Remediation Plan](#5-risk-remediation-plan)
+6. [Phase 0 Implementation Roadmap](#6-phase-0-implementation-roadmap)
+7. [Phase 1–15 High-Level Strategy](#7-phase-1-15-high-level-strategy)
+8. [Technology Stack Verification](#8-technology-stack-verification)
+9. [Free Tier Compliance Audit](#9-free-tier-compliance-audit)
+10. [Appendices](#10-appendices)
 
 ---
 
 ## 1. Executive Summary
 
-The Multimax AI Hub project aims to build a comprehensive AI Operating System that unifies chat, coding, research, agents, documents, voice, image generation, and workflow automation into a single self-hosted platform. The vision is ambitious—combining capabilities of 10+ AI tools into one application.
+Multimax AI Hub is an ambitious project to build the world's most powerful free AI Operating System. The project has a **strong architectural foundation** with clear ADRs, a domain-driven modular backend, and a modern React frontend. However, there are **3 critical risks** that must be resolved before Phase 0 can be considered production-ready, and several medium risks that should be addressed in Phase 0.
 
-### Current State
+### Key Strengths
+- ✅ Clean domain module structure (`app/auth/`, `app/workspace/`)
+- ✅ Well-documented Architecture Decision Records (ADRs)
+- ✅ Proper DI container pattern for service resolution
+- ✅ JWT-based auth with refresh token rotation
+- ✅ Event-driven communication between modules
+- ✅ Docker Compose with PostgreSQL + ChromaDB
+- ✅ GitHub Actions CI/CD pipeline
+- ✅ Thoughtful zero-budget strategy (SQLite default, local models)
 
-The project already has significant foundational work:
-- **Backend:** FastAPI application with modular architecture, DI container, event bus, module loader, database abstraction, and auth module
-- **Frontend:** React + Vite + TypeScript with authentication UI, layout components, and API client
-- **Core Infrastructure:** Docker setup, CI/CD pipelines, dev container configuration
-
-### Key Findings
-
-| Metric | Assessment |
-|--------|-----------|
-| **Architecture Quality** | Good - clean modular design with domain-driven patterns |
-| **Code Organization** | Excellent - well-structured with clear separation of concerns |
-| **Production Readiness** | Moderate - needs hardening for security, error handling, and testing |
-| **Zero-Budget Compliance** | Good - SQLite default, in-memory event bus, local storage |
-| **Scalability** | Moderate - modular design supports it but needs optimization |
-| **Risk Level** | Medium - 3 critical issues need immediate attention |
-
----
-
-## 2. Current Architecture Overview
-
-### 2.1 Backend Architecture (FastAPI)
-
-```
-app/
-├── __init__.py
-├── main.py                    # Application factory, lifespan, health endpoints
-├── core/                      # Core framework services
-│   ├── config.py              # Pydantic Settings (env-based configuration)
-│   ├── container.py           # DI container (singleton/factory/registry pattern)
-│   ├── database.py            # Async SQLAlchemy + SQLite/PostgreSQL
-│   ├── events.py              # Event bus (in-memory + PostgreSQL)
-│   ├── exceptions.py          # Base exception hierarchy
-│   ├── logger.py              # Structured logging (JSON + file rotation)
-│   ├── module_loader.py       # Dynamic module discovery & registration
-│   └── plugin_manager.py      # Plugin system for future marketplace
-├── shared/                    # Shared interfaces & types
-│   ├── interfaces.py          # Abstract base classes for domain modules
-│   └── __init__.py
-├── auth/                      # Domain module: Authentication
-│   ├── __init__.py            # Module registration (ModuleInfo + register())
-│   ├── api.py                 # REST routes (register, login, refresh, me)
-│   ├── dependencies.py        # FastAPI dependency injection (get_current_user)
-│   ├── models.py              # SQLAlchemy models (User, RefreshToken)
-│   ├── schemas.py             # Pydantic request/response schemas
-│   └── service.py             # Business logic (password hashing, JWT, etc.)
-└── workspace/                 # Domain module: Workspace
-    ├── __init__.py
-    ├── api.py
-    ├── models.py
-    └── service.py
-```
-
-**Key Design Patterns:**
-- **Application Factory:** `create_app()` in `main.py` returns configured FastAPI instance
-- **Lifespan Manager:** Async context manager for startup/shutdown lifecycle
-- **Module Discovery:** `ModuleLoader` scans packages and loads `module_info` + `register()` functions
-- **DI Container:** Simple type-keyed registry for dependency injection
-- **Event Bus:** Abstract base with in-memory and PostgreSQL implementations
-- **Error Hierarchy:** `MultimaxError` base with typed subclasses
-
-### 2.2 Frontend Architecture (React + Vite)
-
-```
-frontend/src/
-├── main.tsx                   # React entry point
-├── App.tsx                    # Root component with routing
-├── lib/                       # API clients and utilities
-│   ├── api.ts                 # Base API client
-│   ├── api-client.ts          # Enhanced API client with auth
-│   ├── auth-api.ts            # Auth-specific API calls
-│   └── supabase.ts            # Supabase client (optional)
-├── contexts/
-│   └── AuthContext.tsx         # Auth state management (React Context)
-├── components/
-│   └── Layout.tsx              # App layout with sidebar/navigation
-├── pages/
-│   ├── AIChat.tsx              # AI Chat interface (Phase 1 backbone)
-│   ├── Login.tsx               # Login page
-│   ├── Signup.tsx              # Registration page
-│   └── Profile.tsx             # User profile page
-└── types/
-    └── index.ts                # TypeScript type definitions
-```
-
-### 2.3 Data Flow
-
-```
-┌──────────┐     HTTP/JSON      ┌─────────────┐     SQL/ORM      ┌──────────┐
-│  Browser  │ ◄──────────────► │   FastAPI    │ ◄──────────────► │  SQLite  │
-│ (React)   │                  │  (Uvicorn)   │                  │ (Secure) │
-└──────────┘                   └──────┬──────┘                  └──────────┘
-                                      │
-                             ┌────────┴────────┐
-                             │   Event Bus     │
-                             │  (In-Memory)    │
-                             └─────────────────┘
-```
+### Key Weaknesses
+- ❌ **CRITICAL**: Backend startup may fail due to Python import path issues
+- ❌ **CRITICAL**: Global exception handler references `request.app.state` before it's set
+- ❌ **CRITICAL**: Frontend auth localStorage vs in-memory token race conditions
+- ❌ **MEDIUM**: No test infrastructure exists
+- ❌ **MEDIUM**: No rate limiting on auth endpoints
+- ❌ **MEDIUM**: Frontend hardcodes localhost:5173 for Vite proxy
 
 ---
 
-## 3. Existing Codebase Analysis
+## 2. Current Codebase Overview
 
-### 3.1 Strengths
+### 2.1 File Structure
 
-1. **Solid Modular Architecture:** The domain module pattern (`module_info` + `register()`) is clean and extensible. Adding new features requires creating a new package with a standard interface.
+```
+multimax-ai-hub/
+├── backend/
+│   ├── main.py                          # Legacy entry point (WARNING: may crash)
+│   ├── requirements.txt                 # Python deps
+│   ├── app/
+│   │   ├── main.py                      # FastAPI app factory (correct entry point)
+│   │   ├── __init__.py
+│   │   ├── core/
+│   │   │   ├── config.py                # Pydantic Settings
+│   │   │   ├── container.py             # DI container
+│   │   │   ├── database.py              # Async SQLAlchemy manager
+│   │   │   ├── events.py                # Event bus
+│   │   │   ├── exceptions.py            # Global exception handler
+│   │   │   ├── logger.py                # Structured logging
+│   │   │   ├── module_loader.py         # Auto-discovery of domain modules
+│   │   │   └── plugin_manager.py        # Plugin system skeleton
+│   │   ├── shared/
+│   │   │   ├── interfaces.py            # Abstract base classes
+│   │   ├── auth/
+│   │   │   ├── __init__.py              # Module registration
+│   │   │   ├── api.py                   # Auth REST endpoints
+│   │   │   ├── models.py                # User + RefreshToken ORM
+│   │   │   ├── schemas.py               # Pydantic request/response
+│   │   │   ├── service.py               # Auth business logic
+│   │   │   └── dependencies.py          # FastAPI Depends (auth)
+│   │   └── workspace/
+│   │       ├── __init__.py              # Module registration
+│   │       ├── api.py                   # Workspace endpoints
+│   │       ├── models.py                # Workspace ORM
+│   │       └── service.py               # Workspace business logic
+│   ├── services/
+│   │   └── rag_service.py               # RAG service (Phase 1+)
+│   ├── legacy/                          # Marked as legacy/README.md
+│   └── uploads/
+│
+├── frontend/
+│   ├── src/
+│   │   ├── lib/
+│   │   │   ├── api-client.ts            # HTTP client w/ token refresh
+│   │   │   ├── auth-api.ts              # Auth API wrappers
+│   │   │   ├── api.ts                   # Old API client (redundant)
+│   │   │   └── supabase.ts             # Removed (stub)
+│   │   ├── contexts/
+│   │   │   ├── AuthContext.tsx           # Auth state management
+│   │   │   └── ThemeContext.tsx          # Theme state
+│   │   ├── pages/
+│   │   │   ├── AIChat.tsx               # Chat interface (Phase 1)
+│   │   │   ├── Login.tsx                # Login page
+│   │   │   ├── Signup.tsx               # Signup page
+│   │   │   ├── Profile.tsx              # User profile page
+│   │   │   └── ...                      # Other pages
+│   │   ├── components/
+│   │   │   └── Layout.tsx               # App shell w/ sidebar
+│   │   └── types/
+│   │       └── index.ts                 # Shared types
+│   └── package.json                     # Frontend deps
+│
+├── docker/
+│   ├── docker-compose.yml               # PostgreSQL + ChromaDB + Backend
+│   └── Dockerfile.backend               # Backend container
+│
+├── .github/workflows/
+│   ├── ci.yml                           # CI pipeline
+│   └── deploy.yml                       # CD pipeline
+│
+├── .azure/architecture/
+│   ├── ADR-001 to ADR-005               # Architecture Decision Records
+│   ├── ARCHITECTURE_REVIEW.md           # Review notes
+│   └── SOFTWARE_ARCHITECTURE_DOCUMENT.md # SAD
+│
+├── scripts/
+│   └── audit_imports.py                 # Import audit tool
+│
+└── Makefile                             # Dev workflow commands
+```
 
-2. **Production-Quality Error Handling:** The exception hierarchy (`MultimaxError` → `NotFoundError`, `AuthenticationError`, etc.) is well-designed.
+### 2.2 Technology Stack (Verified)
 
-3. **Async-First Design:** Full async/await throughout the backend with proper async database sessions.
-
-4. **Configuration Management:** Pydantic Settings with environment variable support is the right choice. Sensible defaults for development.
-
-5. **Security Baseline:** Password hashing, JWT with refresh tokens, rate limiting configuration, and admin role checks are in place.
-
-6. **Frontend Type Safety:** TypeScript throughout with shared type definitions.
-
-### 3.2 Weaknesses
-
-1. **Inconsistent Service Instantiation:** AuthService is created with `AuthService()` in route handlers instead of using the DI container. The container registers a singleton but routes bypass it.
-
-2. **Supabase Auth Dependency:** The frontend has both custom JWT auth and Supabase auth configured simultaneously, creating confusion about which auth system is active.
-
-3. **Legacy Backend Code:** `backend/services/rag_service.py` and `backend/app/core/plugin_manager.py` appear to be legacy/unused code that could cause confusion.
-
-4. **Exception Handler Signature Mismatch:** `main.py` uses `error_code` and `detail` in exception responses, but `exceptions.py` uses `code` and `message`. This means the exception handler will produce `None` values for actual errors.
-
-5. **Missing Tests:** No test files found for the core framework code (config, container, events, module_loader).
-
-6. **No Migration System:** Alembic is referenced in config but not set up. Schema changes require manual intervention.
+| Layer | Technology | Status |
+|-------|-----------|--------|
+| Frontend Framework | React 18 + TypeScript | ✅ |
+| Build Tool | Vite 5 | ✅ |
+| Styling | Tailwind CSS 3.4 | ✅ |
+| Animation | Framer Motion 11 | ✅ |
+| Routing | React Router 6 | ✅ |
+| Icons | Lucide React | ✅ |
+| Backend Framework | FastAPI (Python) | ✅ |
+| ORM | SQLAlchemy 2.0 (async) | ✅ |
+| Auth | Custom JWT (python-jose) | ✅ |
+| Password Hashing | Argon2 (via passlib) | ✅ fallback to PBKDF2 |
+| Validation | Pydantic v2 | ✅ |
+| Database (dev) | SQLite + aiosqlite | ✅ |
+| Database (prod) | PostgreSQL + asyncpg | ✅ |
+| Vector DB | ChromaDB | ✅ (Docker) |
+| Containerization | Docker Compose | ✅ |
+| CI/CD | GitHub Actions | ✅ |
+| DI Container | Custom (app.core.container) | ✅ |
+| Events | Custom (app.core.events) | ✅ |
 
 ---
 
-## 4. Critical Risks Identified
+## 3. Architecture Deep Dive
 
-### 🔴 CRITICAL-1: Exception Handler/Exception Class Field Mismatch
+### 3.1 Domain Module Architecture
 
-**Location:** `backend/app/main.py` lines 183–191 vs `backend/app/core/exceptions.py` lines 20–34
+The project follows a **domain-driven modular architecture** with auto-discovery:
 
-**Problem:** The exception handler expects `exc.error_code`, `exc.detail`, and `exc.context`, but the `MultimaxError` base class defines `self.code`, `self.message`, and `self.details`. All error responses will return `null` for these fields:
+```
+backend/app/
+├── core/           # Shared infrastructure (framework-agnostic)
+│   ├── config.py   # Settings via environment variables
+│   ├── container   # DI container for service resolution
+│   ├── database    # Async SQLAlchemy engine + session
+│   ├── events      # Event bus for cross-module communication
+│   ├── logger      # Structured logging
+│   └── exceptions  # Global FastAPI exception handlers
+│
+├── shared/         # Abstract interfaces shared across domains
+│   └── interfaces  # Base classes for services, repositories
+│
+├── auth/           # Domain: Authentication & Users
+│   ├── __init__    # Module registration (registers routes, handlers)
+│   ├── api         # REST endpoints
+│   ├── service     # Business logic
+│   ├── models      # SQLAlchemy ORM models
+│   ├── schemas     # Pydantic schemas (request/response)
+│   └── dependencies # FastAPI dependency injection functions
+│
+└── workspace/      # Domain: Workspace Management
+    ├── __init__    # Module registration
+    ├── api         # REST endpoints
+    ├── service     # Business logic
+    └── models      # SQLAlchemy ORM models
+```
+
+**Module Discovery Flow:**
+1. `app/main.py` creates the FastAPI app factory
+2. `app/core/module_loader.py` scans `app/` for domain packages
+3. Each domain's `__init__.py` exports a `register()` function
+4. `module_loader` calls `register()` for each discovered module
+5. `register()` injects routes, event handlers, and startup/shutdown callbacks into the app
+
+**This is a clean, extensible pattern** — but the `__init__.py` key functions need proper import handling (risk #1).
+
+### 3.2 Authentication Flow
+
+```
+Login:
+  Client                    Server
+    |                         |
+    |-- POST /api/auth/login -->|  Validate credentials
+    |                         |  Generate JWT access token (15 min)
+    |                         |  Generate refresh token (7 days)
+    |                         |  Store refresh token hash in DB
+    |<-- {access, refresh, user} --|
+    |                         |
+    |  Store tokens in        |
+    |  localStorage + memory  |
+    |  Redirect to /          |
+
+Token Refresh:
+    |                         |
+    |-- POST /api/auth/refresh -->|  Validate refresh token hash
+    |                         |  Rotate: revoke old, issue new
+    |<-- {new access, new refresh} --|
+```
+
+**Token storage concern:** The frontend stores tokens in both `localStorage` and an in-memory variable. On page load, it reads from `localStorage` into memory. A race condition exists between the `localStorage.getItem('access_token')` call and the `setTokens()` call during refresh.
+
+### 3.3 DI Container Pattern
 
 ```python
-# main.py (line 189) — reads:
-content = {"error": exc.error_code, "message": exc.detail, "context": exc.context}
-# But exceptions.py defines:
-self.message = message   # not "detail"
-self.code = code         # not "error_code"
-self.details = details or {}  # not "context"
+# app/core/container.py
+class Container:
+    def __init__(self):
+        self._services: dict[type, Any] = {}
+        self._factories: dict[type, Callable] = {}
+
+    def register(self, interface: type, implementation: type) -> None: ...
+    def register_instance(self, interface: type, instance: Any) -> None: ...
+    def register_factory(self, interface: type, factory: Callable) -> None: ...
+    def resolve(self, interface: type) -> Any: ...
+
+# Usage in API routes:
+def _get_auth_service() -> AuthService:
+    container = get_container()
+    return container.resolve(AuthService)
 ```
 
-**Impact:** All error responses from the API will be broken — returning `null` for error codes and messages. Frontend error handling will fail silently.
-
-**Severity:** Critical — affects ALL API error responses
-
-**Fix:** Standardize field names (either change the exception class or change the handler)
-
----
-
-### 🔴 CRITICAL-2: AuthService Instantiation Bypasses DI Container
-
-**Location:** `backend/app/auth/api.py` lines 59, 85, 116, 143, 175, 215, 245
-
-**Problem:** Every route handler creates a new `AuthService()` instance directly instead of resolving from the DI container. The container registers a singleton (line 49 in `auth/__init__.py`) but no route ever uses it. This means:
-- No shared state (e.g., database sessions are created fresh each time)
-- No testability (can't mock AuthService in tests)
-- Potential resource leaks from unmanaged database connections
-
-**Impact:** Inconsistent database sessions, inability to unit test routes, wasted resources
-
-**Severity:** Critical — undermines the entire DI pattern
-
-**Fix:** Replace `Depends(lambda: AuthService())` with `Depends(get_auth_service)` where `get_auth_service` resolves from container
-
----
-
-### 🔴 CRITICAL-3: Module Discovery Path Mismatch
-
-**Location:** `backend/app/main.py` line 92
-
-**Problem:** The module loader discovers modules in `"app"` as the base package, but it expects subpackages with `module_info`. The `auth` module is at `app.auth` (a subpackage), and `app.auth.__init__` has the proper `module_info` + `register()`. However, scanning `"app"` will also attempt to scan `app.core`, `app.shared`, etc., which are NOT modules and don't have `module_info`.
-
-**Impact:** The `discover()` call on line 92 will either:
-- Fail for non-module subpackages (generating warning logs)
-- Miss modules if they're structured differently
-- Load modules in unpredictable order
-
-**Severity:** Critical — module discovery is the backbone of the plugin architecture
-
----
-
-## 5. Medium Risks Identified
-
-### 🟡 MEDIUM-1: Secret Key in Code Defaults
-
-**Location:** `backend/app/core/config.py` lines 26, 101
-
-**Problem:** Default values for `APP_SECRET_KEY` and `AUTH_SECRET_KEY` are "change-me-to-a-random-secret-key" and "change-me-to-another-random-secret". While documented as changeme values, there's no validation or warning if these defaults are used in production.
-
-**Impact:** Critical security vulnerability if accidentally deployed with default keys
-
----
-
-### 🟡 MEDIUM-2: Rate Limiting Configuration But No Implementation
-
-**Location:** `backend/app/core/config.py` line 115
-
-**Problem:** `API_RATE_LIMIT_PER_MINUTE` is defined but no rate-limiting middleware is installed or configured.
-
-**Impact:** API is vulnerable to abuse and DoS attacks
-
----
-
-### 🟡 MEDIUM-3: Legacy/Unused Code Files
-
-**Location:** `backend/services/rag_service.py`, `backend/app/core/plugin_manager.py`
-
-**Problem:** These files appear to be legacy or experimental. They import from modules that don't exist or reference outdated patterns. Could confuse developers and increase maintenance burden.
-
----
-
-### 🟡 MEDIUM-4: No Database Migration System
-
-**Problem:** The project creates tables via `Base.metadata.create_all()` on startup (development mode). This is not safe for production — schema changes require manual intervention and there's no version control for database changes.
-
-**Impact:** Production deployment risk — schema changes are irreversible and unversioned
-
----
-
-## 6. Low Risks / Observations
-
-### 🟢 LOW-1: Health Readiness Probe Returns 200 Instead of 503
-
-**Location:** `backend/app/main.py` lines 157–176
-
-**Observation:** The readiness check returns `{"status": "unavailable"}` as a JSON response with default status code 200 when `app.state.multimax` is missing. It should return HTTP 503. The `JSONResponse(status_code=503, ...)` is only used for AttributeError, but the main try block returns a dict (which FastAPI converts to 200).
-
-### 🟢 LOW-2: CORS Origins Hardcoded
-
-**Location:** `backend/app/core/config.py` lines 116–119
-
-**Observation:** CORS origins are hardcoded as a comma-separated string. For production, this should be `["*"]` temporarily or loaded from environment properly.
-
-### 🟢 LOW-3: SQLite Concurrency
-
-**Observation:** SQLite is the default database (zero-budget compliant), but SQLite has limited concurrent write support. For multi-user scenarios, PostgreSQL will be necessary.
-
-### 🟢 LOW-4: No Input Sanitization on Frontend
-
-**Observation:** Chat inputs and API request bodies don't show evidence of sanitization for XSS or injection attacks.
-
----
-
-## 7. Architecture Recommendations
-
-### 7.1 Critical Fixes (Must Do Before Phase 0 Completion)
-
-1. **Fix exception handler/exceptions field mismatch** (CRITICAL-1)
-2. **Fix AuthService DI container usage** (CRITICAL-2)
-3. **Fix module discovery to scan specific module directories** (CRITICAL-3)
-
-### 7.2 Recommended Improvements
-
-1. **Add rate limiting middleware** (e.g., `slowapi` or custom middleware)
-2. **Add production startup validation** — warn if default secrets are used
-3. **Set up Alembic migrations** for production-safe schema management
-4. **Clean up legacy code** — remove or archive `services/` and old files
-5. **Add comprehensive tests** for core framework components
-6. **Standardize API response format** (current is inconsistent between auth and health endpoints)
-
-### 7.3 Architecture Decisions for Phase 1+
-
-| Decision | Recommendation | Rationale |
-|----------|---------------|-----------|
-| AI Provider Abstraction | Build `AIModelProvider` abstract base with Ollama/LiteLLM implementations | Enables router to switch models dynamically |
-| Chat Storage | SQLAlchemy model with async session | Reuses existing database layer |
-| Streaming | Server-Sent Events (SSE) via FastAPI `StreamingResponse` | Native FastAPI support, no extra dependencies |
-| Vector Database | ChromaDB (lightweight, self-hostable) | Zero-budget compliant, Python-native |
-| Search | SearXNG (self-hosted meta search engine) | Free, privacy-respecting |
-| Voice | Whisper (local) + Coqui TTS (local) | Both are MIT-licensed, run locally |
-| Image Generation | Stable Diffusion via ComfyUI API | Free, self-hostable |
-
----
-
-## 8. Phase 0 Detailed Implementation Roadmap
-
-### 8.1 Overview
-
-Phase 0 is the foundation — everything in Phase 1+ depends on it being solid. Current state is approximately 65% complete for Phase 0.
-
-**Estimated Effort:** 2–3 weeks for a single developer
-**Priority:** Security fixes → Core hardening → Tests → Documentation
-
-### 8.2 Step-by-Step Tasks
-
-#### Step 1: Fix Critical Security/Architecture Issues (Days 1–2)
-
-| Task | File(s) | Description |
-|------|---------|-------------|
-| 1.1 Fix exception field mismatch | `core/exceptions.py` and/or `main.py` | Align field names between exception class and handler |
-| 1.2 Fix AuthService DI | `auth/api.py` | Use container-resolved AuthService instead of direct instantiation |
-| 1.3 Fix module discovery | `core/module_loader.py` and `main.py` | Limit discovery to `app.auth`, `app.workspace`, `app.chat` etc. |
-| 1.4 Add secret key validation | `core/config.py` | Warn on startup if default secrets are used |
-| 1.5 Add rate limiting | `main.py` + dependencies | Install and configure rate limiting middleware |
-
-#### Step 2: Authentication Hardening (Days 2–3)
-
-| Task | File(s) | Description |
-|------|---------|-------------|
-| 2.1 Review JWT implementation | `auth/service.py`, `auth/dependencies.py` | Verify token expiration, rotation, and revocation |
-| 2.2 Add password policy | `auth/schemas.py`, `auth/service.py` | Minimum length, complexity requirements |
-| 2.3 Fix readiness probe HTTP status | `main.py` | Return 503 when app state is uninitialized |
-| 2.4 Clean up Supabase references | `frontend/src/lib/supabase.ts`, `frontend/src/contexts/AuthContext.tsx` | Clarify auth direction (remove or document Supabase usage) |
-
-#### Step 3: Core Framework Hardening (Days 3–5)
-
-| Task | File(s) | Description |
-|------|---------|-------------|
-| 3.1 Add comprehensive error handling | All route handlers | Ensure all exceptions are caught and returned consistently |
-| 3.2 Add request/response logging middleware | `core/middleware.py` (new) | Log all API requests with timing |
-| 3.3 Add database connection pooling config | `core/database.py` | Configure pool size, overflow, timeouts |
-| 3.4 Add health check depth | `core/database.py`, `main.py` | Add database ping to readiness check |
-| 3.5 Add graceful shutdown timeout | `main.py` | Configure graceful shutdown with timeout |
-
-#### Step 4: Database & Migration Setup (Days 4–6)
-
-| Task | File(s) | Description |
-|------|---------|-------------|
-| 4.1 Set up Alembic | `backend/alembic/` (new) | Initialize migration repository |
-| 4.2 Create initial migration | Alembic | Auto-generate migration for existing models |
-| 4.3 Add migration documentation | `README.md` | Document how to create and run migrations |
-| 4.4 Add migration CI check | `.github/workflows/ci.yml` | Verify migrations are up to date in CI |
-
-#### Step 5: Clean Up Legacy Code (Days 5–6)
-
-| Task | File(s) | Description |
-|------|---------|-------------|
-| 5.1 Audit `backend/services/` | All files in directory | Remove or refactor legacy RAG service |
-| 5.2 Audit `backend/app/core/plugin_manager.py` | `plugin_manager.py` | Determine if needed; remove if legacy |
-| 5.3 Archive unused test files | `backend/test_*.py`, root `test_*.py` | Move to `backend/legacy/` |
-| 5.4 Remove duplicate config files | `.env.example` files | Ensure single source of truth for env vars |
-
-#### Step 6: Testing Infrastructure (Days 6–8)
-
-| Task | File(s) | Description |
-|------|---------|-------------|
-| 6.1 Set up pytest with async support | `pyproject.toml` or `setup.cfg` | Configure pytest-asyncio |
-| 6.2 Write core config tests | `tests/test_config.py` | Test settings loading, env override |
-| 6.3 Write container tests | `tests/test_container.py` | Test registration, resolution, lifecycle |
-| 6.4 Write event bus tests | `tests/test_events.py` | Test publish/subscribe, retry, dead letter |
-| 6.5 Write module loader tests | `tests/test_module_loader.py` | Test discovery and loading |
-| 6.6 Write auth tests | `tests/test_auth.py` | Test registration, login, token refresh |
-| 6.7 Write API integration tests | `tests/test_api.py` | Test health endpoints, error responses |
-
-#### Step 7: Frontend Foundation (Days 7–9)
-
-| Task | File(s) | Description |
-|------|---------|-------------|
-| 7.1 Review auth flow | `AuthContext.tsx`, `Login.tsx`, `Signup.tsx` | Ensure consistent auth state management |
-| 7.2 Add protected route component | `components/ProtectedRoute.tsx` (new) | Redirect unauthenticated users |
-| 7.3 Add error boundary | `components/ErrorBoundary.tsx` (new) | Graceful error handling for React |
-| 7.4 Add loading states | All pages | Skeleton loading components |
-| 7.5 Standardize API client | `api-client.ts` | Consistent error handling, auth headers |
-| 7.6 Add development proxy config | `vite.config.ts` | Proxy API calls to backend during dev |
-
-#### Step 8: Docker & Deployment (Days 8–10)
-
-| Task | File(s) | Description |
-|------|---------|-------------|
-| 8.1 Fix Dockerfile for production | `Dockerfile.backend` | Optimize for production (multi-stage build) |
-| 8.2 Add frontend Dockerfile | `Dockerfile.frontend` (new) | Serve built frontend via Nginx |
-| 8.3 Complete docker-compose | `docker-compose.yml` | Add frontend, ChromaDB, Ollama services |
-| 8.4 Add health check to compose | `docker-compose.yml` | Docker health check for each service |
-| 8.5 Add volume management | `docker-compose.yml` | Persistent volumes for SQLite, uploads |
-| 8.6 Document deployment | `README.md`, deployment guide | Step-by-step deployment instructions |
-
-#### Step 9: Documentation & Developer Experience (Days 9–11)
-
-| Task | File(s) | Description |
-|------|---------|-------------|
-| 9.1 Complete README | `README.md` | Architecture overview, setup instructions |
-| 9.2 Add API documentation | Auto-generated via FastAPI | Ensure all endpoints are documented |
-| 9.3 Add contributing guide | `CONTRIBUTING.md` (new) | Development workflow, PR process |
-| 9.4 Add code of conduct | `CODE_OF_CONDUCT.md` (new) | Community guidelines |
-| 9.5 Add editor config | `.editorconfig` (exists) | Ensure consistency |
-| 9.6 Add pre-commit hooks | `.pre-commit-config.yaml` (exists) | Lint, format, type-check |
-
-#### Step 10: Hardening & Polish (Days 11–14)
-
-| Task | File(s) | Description |
-|------|---------|-------------|
-| 10.1 Add input validation | All Pydantic schemas | Ensure strict validation on all inputs |
-| 10.2 Add CORS hardening | `config.py` | Restrict origins in production |
-| 10.3 Add security headers | `main.py` | Add helmet-like middleware |
-| 10.4 Add logging rotation config | `logger.py` | Ensure logs don't fill disk |
-| 10.5 Performance baseline | All | Profile and document baseline performance |
-| 10.6 Security audit | All | Review for common vulnerabilities |
-
----
-
-## 9. Phase 1–15 High-Level Roadmap
-
+**Observation:** The container uses `get_container()` which is a module-level function — this works but makes testing harder. A future improvement would be to use FastAPI's `app.state` or a request-scoped container.
+
+### 3.4 Event System
+
+```python
+# app/core/events.py
+event_bus = EventBus()
+
+class EventBus:
+    async def emit(self, event: str, data: dict = None): ...
+    def on(self, event: str, handler: Callable): ...
+    def off(self, event: str, handler: Callable): ...
+
+# Emitted events during auth flow:
+# - "auth.user.registered"  (after registration)
+# - "auth.user.logged_in"   (after login)
+# - "auth.user.logged_out"  (after logout)
 ```
-Phase 0: Foundation (Weeks 1-3)
-├── Backend Framework [DONE ~65%]
-├── Authentication [DONE ~80%]
-├── Frontend Shell [DONE ~50%]
-└── Infrastructure [DONE ~40%]
 
-Phase 1: AI Chat (Weeks 3-6)
-├── Ollama Integration
-├── Chat UI with Streaming
-├── Chat History & Management
-├── Markdown Rendering
-└── File Upload Support
+Events are emitted but **no modules subscribe to them yet**. This is fine for Phase 0 but should be leveraged in Phase 1+ for cross-module communication (e.g., workspace creation on user registration).
 
-Phase 2: Coding Assistant (Weeks 6-9)
-├── Code Generation
-├── Code Explanation & Refactoring
-├── Git Integration
-└── Repository Analysis
+---
 
-Phase 3: Research Engine (Weeks 9-11)
-├── Web Search Integration (SearXNG)
-├── Deep Search & Analysis
-├── Citation Management
-└── Research Reports
+## 4. Critical Risks & Blockers
 
-Phase 4: AI Agents (Weeks 11-14)
-├── Browser Control Agent
-├── Task Execution Engine
-├── Multi-Step Planning
-└── Data Collection
+### RISK-01: Backend Startup Import Error (CRITICAL)
 
-Phase 5: Document Intelligence (Weeks 14-17)
-├── PDF Processing
-├── Document OCR
-├── Knowledge Extraction
-└── Mind Maps
+**Issue:** `backend/main.py` (and potentially `backend/app/__init__.py`) may fail due to Python import path issues.
 
-Phase 6: Memory System (Weeks 16-18)
-├── Long-Term Memory
-├── Knowledge Graph
-├── User Preferences
-└── Memory Search
+**Detail:** `backend/main.py` contains:
 
-Phase 7: Voice AI (Weeks 18-20)
-├── Speech-to-Text (Whisper)
-├── Text-to-Speech (Coqui)
-├── Voice Chat Interface
-└── Voice Commands
+```python
+import sys
+from pathlib import Path
 
-Phase 8: Image Studio (Weeks 20-23)
-├── Image Generation
-├── Logo & Thumbnail Creation
-├── Photo Editing
-└── Background Removal
+# Add app directory to path
+sys.path.insert(0, str(Path(__file__).parent))
+```
 
-Phase 9: Video Studio (Weeks 23-26)
-├── Video Generation
-├── Subtitle Generator
-├── Avatar Videos
-└── Shorts Generator
+However, the **correct** `app/main.py` (the app factory) exists at `backend/app/main.py`. If `backend/` alone is added to `sys.path`, then imports like `from app.core.config import ...` work correctly. But if `backend/app/` is ever added instead, imports break.
 
-Phase 10: Workflow Automation (Weeks 26-30)
-├── Visual Workflow Builder
-├── Integration Connectors
-├── Triggers & Schedules
-└── AI Workflows
+**Impact:** Backend fails to start. All development blocked.
 
-Phase 11: Plugin Marketplace (Weeks 30-33)
-├── Plugin Installation System
-├── MCP Server Support
-├── Version Management
-└── Community Plugin Support
+**Detection:** Run `python -m backend.app.main` or `python backend/app/main.py` to verify.
 
-Phase 12: Team Workspace (Weeks 33-36)
-├── Organizations
-├── Permissions & Roles
-├── Shared Resources
-└── Real-Time Collaboration
+### RISK-02: Global Exception Handler Timing (CRITICAL)
 
-Phase 13: Marketplace (Weeks 36-39)
-├── Publishing System
-├── Agent Marketplace
-├── Template Marketplace
-└── Community Features
+**Issue in `app/core/exceptions.py`:**
 
-Phase 14: Mobile Apps (Weeks 39-44)
-├── Android App
-├── iOS App
-├── Tablet Support
-└── Mobile-First UI
+```python
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    # ... logs error details ...
+    # request.app.state may not be available during startup  
+```
 
-Phase 15: Enterprise (Weeks 44-48+)
-├── SSO & SAML
-├── Audit Logs
-├── Advanced RBAC
-└── Enterprise APIs
+**Detail:** If an exception occurs **during app startup** (before `lifespan` completes), `request.app.state` may not be initialized. The handler tries to access `request.app.state.start_time` which can raise `AttributeError`.
+
+**Impact:** If a startup error occurs, the error handler itself crashes, producing a 500 with no useful information.
+
+### RISK-03: Auth Token Storage Race Condition (CRITICAL)
+
+**Issue in `frontend/src/lib/api-client.ts`:**
+
+```typescript
+let accessToken: string | null = localStorage.getItem('access_token')
+let refreshToken: string | null = localStorage.getItem('refresh_token')
+```
+
+These are initialized at module load time. But `setTokens()` writes to both localStorage and the in-memory variable. On page load, if the browser restores tab state, the in-memory variable could be stale.
+
+**More critically:** The `getAccessToken()` function is used by `AuthContext.tsx` to check if a user is logged in:
+
+```typescript
+useEffect(() => {
+    const token = getAccessToken()
+    if (!token) {
+      setLoading(false)
+      return
+    }
+    // ... try to restore session
+}, [])
+```
+
+Since the in-memory variable is initialized from `localStorage` at import time, this works. But there's a subtle race: if two tabs are open and one logs out (clearing localStorage), the other tab's in-memory variable still holds the old token. The next API call gets a 401, triggers refresh, which fails, then the user is logged out. This is functionally correct but **not reliable**.
+
+**Real risk:** The `let` declarations at module level are not exported — only `getAccessToken()` is. If another module directly imports these during hot module reload in dev, they get the initial value, not the current value.
+
+### RISK-04: No Test Infrastructure (HIGH)
+
+**Issue:** Zero test files exist. No pytest configuration. No test database setup.
+
+**Impact:** Impossible to verify regressions. Phase 0 changes must be manually tested.
+
+### RISK-05: Auth Rate Limiting (MEDIUM)
+
+**Issue:** Login/register endpoints have no rate limiting. A single client can brute-force passwords or spam registration.
+
+**Impact:** Security vulnerability. Must be addressed before production.
+
+### RISK-06: Frontend Hardcodes Backend URL (MEDIUM)
+
+**Issue in `frontend/src/lib/api-client.ts`:**
+
+```typescript
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+```
+
+But in `pages/AIChat.tsx`:
+
+```typescript
+fetch('http://localhost:8000/api/chat/send', ...)
+```
+
+**Impact:** Hardcoded URLs break in Docker deployment and production.
+
+### RISK-07: Login Redirect Uses Hardcoded Port (MEDIUM)
+
+**Issue in Login.tsx:**
+
+```typescript
+window.location.href = 'http://localhost:5173/'
+```
+
+**Impact:** Fails in Docker where frontend runs on a different port. Should use relative URL or env variable.
+
+### RISK-08: Missing Database Migration System (MEDIUM)
+
+**Issue:** The app uses `Base.metadata.create_all()` for schema creation (called on startup). This works for development but has no migration path. Schema changes require recreating the database.
+
+**Impact:** Breaking changes in production. No rollback capability.
+
+### RISK-09: workspace module depends on auth model (LOW)
+
+**Issue:** `workspace/service.py` imports from `app.auth.models` directly. While this works, it creates a tight coupling between domains. The workspace module should use the shared interfaces or event bus instead.
+
+### RISK-10: Legacy Code Left in Place (LOW)
+
+**Issue:** `backend/main.py` and `frontend/src/lib/api.ts` are old entry points that should be removed or clearly marked as deprecated. Confusion about which entry point to use.
+
+---
+
+## 5. Risk Remediation Plan
+
+| Risk | Priority | Action | Effort |
+|------|----------|--------|--------|
+| RISK-01 | **CRITICAL** | Fix import paths, add startup validation | 30 min |
+| RISK-02 | **CRITICAL** | Fix exception handler with defensive request.app.state check | 15 min |
+| RISK-03 | **CRITICAL** | Centralize token storage, fix AuthContext initialization | 45 min |
+| RISK-04 | **HIGH** | Add pytest setup, test database config, write auth unit tests | 2 hours |
+| RISK-05 | **MEDIUM** | Add slowapi rate limiting to auth endpoints | 30 min |
+| RISK-06 | **MEDIUM** | Replace hardcoded URLs with env variable / proxy config | 20 min |
+| RISK-07 | **MEDIUM** | Use relative redirect after login | 10 min |
+| RISK-08 | **MEDIUM** | Add Alembic migration setup | 1 hour |
+| RISK-09 | **LOW** | Refactor workspace to use event-driven user creation | 30 min |
+| RISK-10 | **LOW** | Remove/archive legacy code | 15 min |
+
+---
+
+## 6. Phase 0 Implementation Roadmap
+
+Phase 0 is the **foundation** — it must be rock solid before building any features. The goal is a stable, authenticated, deployable base.
+
+### Step 0: Fix Critical Risks (Day 1)
+- [x] **0.1**: Fix RISK-01 — Add backend path to sys.path in `app/__init__.py`
+- [ ] **0.2**: Fix RISK-02 — Defensive `request.app.state` in exception handler
+- [ ] **0.3**: Fix RISK-03 — Consolidate token storage to localStorage-only with single-source-of-truth
+- [ ] **0.4**: Verify backend starts successfully with `uvicorn app.main:create_app --factory`
+
+### Step 1: Authentication Polish (Day 1-2)
+- [ ] **1.1**: Add rate limiting to auth endpoints (slowapi)
+- [ ] **1.2**: Fix login redirect to use relative path
+- [ ] **1.3**: Add password strength validation
+- [ ] **1.4**: Add proper frontend route protection (redirect to /login if unauthenticated)
+- [ ] **1.5**: Test full auth flow: register → login → protected route → refresh → logout
+
+### Step 2: Dashboard & Navigation (Day 2-3)
+- [ ] **2.1**: Create Dashboard page with stats and quick actions
+- [ ] **2.2**: Improve sidebar with all Phase 0 navigation items
+- [ ] **2.3**: Add responsive mobile navigation
+- [ ] **2.4**: Add page transition animations
+- [ ] **2.5**: Add keyboard shortcuts (Cmd+K for search, etc.)
+
+### Step 3: Theme & Settings (Day 3)
+- [ ] **3.1**: Complete ThemeContext with system preference detection
+- [ ] **3.2**: Persist theme preference to backend
+- [ ] **3.3**: Create Settings page with tabs (Profile, Appearance, Notifications)
+- [ ] **3.4**: Add avatar upload functionality
+
+### Step 4: Profile Management (Day 3-4)
+- [ ] **4.1**: Complete Profile page with edit functionality
+- [ ] **4.2**: Add email verification flow
+- [ ] **4.3**: Add password change flow
+- [ ] **4.4**: Add user preferences storage and retrieval
+
+### Step 5: Database Migrations (Day 4)
+- [ ] **5.1**: Configure Alembic with async support
+- [ ] **5.2**: Generate initial migration from current models
+- [ ] **5.3**: Add migration scripts to Docker startup
+
+### Step 6: Docker & Deployment (Day 4-5)
+- [ ] **6.1**: Add frontend service to docker-compose.yml
+- [ ] **6.2**: Add Nginx reverse proxy configuration
+- [ ] **6.3**: Create Dockerfile.frontend
+- [ ] **6.4**: Add proper health checks for all services
+- [ ] **6.5**: Create .env.example files with all documented variables
+- [ ] **6.6**: Test full `docker-compose up` flow
+
+### Step 7: Logging & Error Handling (Day 5)
+- [ ] **7.1**: Add structured logging with request IDs
+- [ ] **7.2**: Add error reporting endpoints
+- [ ] **7.3**: Create friendly error pages (404, 500)
+- [ ] **7.4**: Add frontend error boundary components
+
+### Step 8: Testing Infrastructure (Day 5-6)
+- [ ] **8.1**: Configure pytest with async support
+- [ ] **8.2**: Create test database fixture (SQLite in-memory)
+- [ ] **8.3**: Write auth service unit tests
+- [ ] **8.4**: Write auth API integration tests
+- [ ] **8.5**: Write frontend component tests (Vitest + React Testing Library)
+- [ ] **8.6**: Add CI test step to GitHub Actions
+
+### Step 9: API Documentation & Health (Day 6)
+- [ ] **9.1**: Verify Swagger UI at /docs is comprehensive
+- [ ] **9.2**: Add health check endpoints (live + ready)
+- [ ] **9.3**: Add API versioning prefix (/api/v1/...)
+- [ ] **9.4**: Add OpenAPI metadata (title, version, description)
+
+### Step 10: Code Quality & Cleanup (Day 6-7)
+- [ ] **10.1**: Remove legacy files (backend/main.py, frontend/src/lib/api.ts)
+- [ ] **10.2**: Add pre-commit hooks (linting, formatting)
+- [ ] **10.3**: Add EditorConfig file (already exists)
+- [ ] **10.4**: Verify all imports are correct
+- [ ] **10.5**: Document remaining ADRs if needed
+- [ ] **10.6**: Final smoke test of entire Phase 0
+
+### Phase 0 Complete ✅ → Phase 1 Begins
+
+---
+
+## 7. Phase 1–15 High-Level Strategy
+
+### Phase 1: AI Chat (Week 2–3)
+- Implement Ollama integration for local models (Qwen, DeepSeek, Llama)
+- Streaming chat via Server-Sent Events
+- Markdown rendering + code highlighting (already partially done)
+- Chat history CRUD in PostgreSQL
+- Prompt library, custom personas
+- Chat folders, search, export
+
+### Phase 2: Coding Assistant (Week 3–4)
+- Code generation with DeepSeek
+- Git integration (clone, analyze repos)
+- Terminal assistant
+- Codebase search (ChromaDB for embeddings)
+
+### Phase 3–15: Follow logically
+- Research → Agents → Documents → Memory → Voice → Image → Video → Workflows → Marketplace → Team → Mobile → Enterprise
+
+### Key Architectural Decision for Phases 1+
+Each new feature should be a **domain module** following the same pattern as `auth/` and `workspace/`:
+```
+app/{feature}/
+├── __init__.py     # module registration
+├── api.py          # REST endpoints
+├── service.py      # Business logic
+├── models.py       # ORM models
+└── schemas.py      # Pydantic schemas
 ```
 
 ---
 
-## 10. Technology Decisions & Justifications
+## 8. Technology Stack Verification
 
-### Backend
+### Check: Zero Budget (Free & Open Source)
 
-| Technology | Status | Justification |
-|------------|--------|---------------|
-| **Python 3.11+** | ✅ Chosen | Best ecosystem for AI/ML, async support |
-| **FastAPI** | ✅ Chosen | Async-native, auto-docs, fast performance |
-| **SQLAlchemy 2.0** | ✅ Chosen | Mature async ORM, Alembic integration |
-| **SQLite** | ✅ Default | Zero-budget, file-based, no server needed |
-| **PostgreSQL** | ✅ Future | When scaling beyond single-user SQLite limits |
-| **ChromaDB** | ✅ Chosen | Python-native vector DB, self-hostable |
-| **Ollama** | ✅ Chosen | Run LLMs locally, no API costs |
-| **LiteLLM** | ⚠️ Consider | For cloud API proxy (when user provides keys) |
-| **Alembic** | ⚠️ Not set up | Needed for production migrations |
+| Technology | License | Cost | Status |
+|-----------|---------|------|--------|
+| React | MIT | Free | ✅ |
+| Vite | MIT | Free | ✅ |
+| Tailwind CSS | MIT | Free | ✅ |
+| Framer Motion | MIT | Free | ✅ |
+| FastAPI | MIT | Free | ✅ |
+| SQLAlchemy | MIT | Free | ✅ |
+| ChromaDB | Apache 2.0 | Free | ✅ |
+| PostgreSQL | PostgreSQL | Free | ✅ |
+| Docker | Apache 2.0 | Free | ✅ |
+| Python | PSF | Free | ✅ |
+| Node.js | MIT | Free | ✅ |
+| TypeScript | Apache 2.0 | Free | ✅ |
+| Lucide Icons | ISC | Free | ✅ |
 
-### Frontend
+### Check: Self-Hostable
+- ✅ All components run locally via Docker Compose
+- ✅ SQLite for development (no external DB required)
+- ✅ Local AI models via Ollama (no cloud dependency)
+- ✅ Vercel free tier for frontend hosting
+- ✅ No paid API keys required for default experience
 
-| Technology | Status | Justification |
-|------------|--------|---------------|
-| **React 18+** | ✅ Chosen | Mature ecosystem, hooks-based |
-| **TypeScript** | ✅ Chosen | Type safety, better DX |
-| **Vite** | ✅ Chosen | Fast HMR, modern bundler |
-| **Tailwind CSS** | ✅ Chosen | Utility-first, fast UI development |
-| **Shadcn UI** | ⚠️ Not installed | Excellent component library, radix-based |
-| **React Router** | ⚠️ Not installed | Needed for proper routing |
-
-### Infrastructure
-
-| Technology | Status | Justification |
-|------------|--------|---------------|
-| **Docker** | ✅ Chosen | Portable deployment, dev/prod parity |
-| **GitHub Actions** | ✅ Chosen | Free CI/CD for open-source projects |
-| **Cloudflare** | ⚠️ Future | Free CDN, DDoS protection |
-| **Dev Containers** | ✅ Chosen | Standardized development environment |
+### Check: Modular Architecture
+- ✅ Domain modules auto-discover and register
+- ✅ Event bus for cross-module communication
+- ✅ DI container for service abstraction
+- ✅ Plugin manager skeleton (extensible)
+- ✅ Docker microservice-friendly
 
 ---
 
-## 11. Zero-Budget Validation
+## 9. Free Tier Compliance Audit
 
-Every technology choice has been validated against the zero-budget requirement:
+### Backend Requirements
+| Resource | Current | Free Tier Compatible? |
+|----------|---------|----------------------|
+| Database | SQLite (dev) / PostgreSQL | ✅ SQLite is free. Supabase free tier (500MB) works. |
+| Vector DB | ChromaDB | ✅ Self-hosted, free |
+| AI Models | Ollama (local) | ✅ Free, runs on own hardware |
+| Hosting | Docker (self-hosted) | ✅ Or Vercel free tier (serverless? No — use Railway/Render free) |
 
-| Component | Cost | Alternative if Paid |
-|-----------|------|---------------------|
-| **Database** | $0 (SQLite) | PostgreSQL (free self-hosted) |
-| **Vector DB** | $0 (ChromaDB) | Pinecone (paid) |
-| **LLM Inference** | $0 (Ollama) | OpenAI API (paid) |
-| **Speech-to-Text** | $0 (Whisper) | Google STT (paid) |
-| **Text-to-Speech** | $0 (Coqui TTS) | ElevenLabs (paid) |
-| **Search** | $0 (SearXNG) | Google Search API (paid after 100 queries/day) |
-| **Image Gen** | $0 (Stable Diffusion) | DALL-E 3 (paid) |
-| **Object Storage** | $0 (Local + Supabase free tier) | AWS S3 (paid) |
-| **CI/CD** | $0 (GitHub Actions free) | CircleCI (paid) |
-| **Auth** | $0 (Custom JWT) | Auth0 (paid tier) |
-| **Monitoring** | $0 (Structured logging) | Datadog (paid) |
-| **OCR** | $0 (PaddleOCR/Tesseract) | Azure Document Intelligence (paid) |
+### Frontend Requirements
+| Resource | Current | Free Tier Compatible? |
+|----------|---------|----------------------|
+| Hosting | Vite dev | ✅ Vercel free tier |
+| Domain | localhost | ✅ Can use Vercel subdomain |
+| Storage | Local + Supabase Storage | ✅ Supabase free tier (1GB) |
 
-**Total Monthly Cost for Self-Hosted Setup: $0–$5** (domain name + basic VPS if not self-hosted on existing hardware)
-
----
-
-## Summary of Required Actions
-
-### Immediate (Before Proceeding)
-1. ✅ ~~Read and understand the project vision~~ (Completed)
-2. ⬜ Fix exception handler mismatch (CRITICAL-1)
-3. ⬜ Fix AuthService DI pattern (CRITICAL-2)
-4. ⬜ Fix module discovery path (CRITICAL-3)
-
-### Short-Term (Phase 0 Completion)
-5. ⬜ Add rate limiting middleware
-6. ⬜ Set up Alembic migrations
-7. ⬜ Clean up legacy code files
-8. ⬜ Add comprehensive test suite
-9. ⬜ Complete Docker setup
-10. ⬜ Complete documentation
-
-### Medium-Term (Before Phase 1 Start)
-11. ⬜ Implement AI provider abstraction
-12. ⬜ Implement chat persistence
-13. ⬜ Build streaming infrastructure
-14. ⬜ Set up vector database integration
+### Action Item
+- The project spec mentions Supabase free tier but the current code uses **custom JWT auth**, not Supabase Auth. This is actually BETTER (no vendor lock-in). The Supabase reference can be removed entirely.
+- For deployment, consider **Railway** or **Render** free tier instead of Vercel (since Vercel's free tier is optimized for serverless, and FastAPI is long-running).
 
 ---
 
-**Ready for your review and approval.** Once you approve this roadmap, I'll begin implementing Phase 0 step by step, fixing the critical issues first, then systematically building out the remaining foundation.
+## 10. Appendices
 
-Would you like to proceed with the implementation?
+### A. ADR Summary
+
+| ADR | Title | Status |
+|-----|-------|--------|
+| ADR-001 | Record Architecture Decisions | ✅ Final |
+| ADR-002 | Domain Modules | ✅ Final |
+| ADR-003 | AI Provider Abstraction | ✅ Final |
+| ADR-004 | Event-Driven Communication | ✅ Final |
+| ADR-005 | Zero Budget Stack | ✅ Final |
+
+### B. Key Files Reference
+
+| File | Purpose | Status |
+|------|---------|--------|
+| `backend/app/main.py` | FastAPI app factory (CORRECT entry point) | ✅ Active |
+| `backend/main.py` | Legacy entry point | ⚠️ Deprecated |
+| `backend/app/core/config.py` | Environment-based config | ✅ Active |
+| `backend/app/auth/service.py` | Auth business logic | ✅ Active |
+| `frontend/src/lib/api-client.ts` | HTTP client w/ auto-refresh | ✅ Active |
+| `frontend/src/lib/auth-api.ts` | Auth API wrappers | ✅ Active |
+| `frontend/src/contexts/AuthContext.tsx` | Auth state provider | ✅ Active |
+| `docker/docker-compose.yml` | Infrastructure | ✅ Active |
+| `frontend/src/lib/api.ts` | Old API client | ⚠️ Deprecated |
+
+### C. Environment Variables Required
+
+```bash
+# Backend (.env)
+DATABASE_URL=sqlite+aiosqlite:///./data/multimax.db
+AUTH_SECRET_KEY=<generate-with: openssl rand -hex 32>
+AUTH_ALGORITHM=HS256
+AUTH_ACCESS_TOKEN_EXPIRE_MINUTES=15
+AUTH_REFRESH_TOKEN_EXPIRE_DAYS=7
+
+# Frontend (.env)
+VITE_API_URL=http://localhost:8000
+```
+
+---
+
+## APPROVAL CHECKLIST
+
+Before Phase 1 begins, the following must be done:
+
+- [ ] **Risks 1–3** are fixed and verified
+- [ ] Backend starts cleanly with `uvicorn app.main:create_app --factory`
+- [ ] Frontend starts cleanly with `npm run dev`
+- [ ] Auth flow: Register → Login → Refresh → Logout works end-to-end
+- [ ] Docker Compose starts all services
+- [ ] Tests pass (once test infrastructure is built)
+- [ ] Legacy code cleaned up
+
+---
+
+**Prepared for:** Raj (Founder)  
+**Review status:** ⏳ Awaiting approval  
+**Next action:** Upon approval, begin Step 0 (fix critical risks)

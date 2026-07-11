@@ -39,7 +39,9 @@ class AppState:
         self.container: Container = get_container()
         self.module_loader: ModuleLoader = ModuleLoader()
         self.event_bus = create_event_bus(self.settings)
-        self.database = get_database()
+        # Initialize database (must call init_database before get_database)
+        from app.core.database import init_database
+        self.database = init_database(self.settings)
 
 
 # --------------------------------------------------------------------------- #
@@ -129,10 +131,8 @@ def _warn_default_secrets(settings: Settings) -> None:
 
 def _setup_middleware(app: FastAPI, settings: Settings) -> None:
     """Configure application middleware."""
-    # CORS
-    origins = settings.CORS_ORIGINS
-    if isinstance(origins, str):
-        origins = [o.strip() for o in origins.split(",") if o.strip()]
+    # CORS — use the property which returns List[str]
+    origins = settings.cors_origins
 
     app.add_middleware(
         CORSMiddleware,
@@ -190,7 +190,7 @@ def _setup_health_endpoints(app: FastAPI) -> None:
 
         return {
             "status": "ready",
-            "modules": list(app_state.module_loader.get_all_modules().keys())
+            "modules": app_state.module_loader.get_module_names()
             if hasattr(app_state.module_loader, "_modules")
             else [],
         }

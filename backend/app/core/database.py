@@ -18,6 +18,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncGenerator, AsyncIterator, Optional
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     AsyncEngine,
@@ -119,6 +120,24 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Failed to initialize database engine: {e}")
             raise
+
+    async def ping(self) -> bool:
+        """Check database connectivity by executing a simple query.
+
+        Returns:
+            True if database is reachable, False otherwise.
+        """
+        if not self._engine:
+            return False
+        try:
+            async with self._engine.connect() as conn:
+                if self._settings.database_url.startswith("postgresql"):
+                    await conn.execute(text("SELECT 1"))
+                else:
+                    await conn.execute(text("SELECT 1"))
+            return True
+        except Exception:
+            return False
 
     async def close(self) -> None:
         """Dispose of the database engine."""

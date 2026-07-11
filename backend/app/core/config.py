@@ -112,6 +112,8 @@ class Settings(BaseSettings):
     EVENT_BUS_DEAD_LETTER_MAX: int = Field(default=1000, alias="EVENT_BUS_DEAD_LETTER_MAX")
 
     # --- API ---
+    API_HOST: str = Field(default="0.0.0.0", alias="API_HOST")
+    API_PORT: int = Field(default=8000, alias="API_PORT")
     API_RATE_LIMIT_PER_MINUTE: int = Field(default=60, alias="API_RATE_LIMIT_PER_MINUTE")
     API_CORS_ORIGINS: str = Field(
         default="http://localhost:3000,http://localhost:5173,http://localhost:3001",
@@ -121,6 +123,23 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> List[str]:
         return [origin.strip() for origin in self.API_CORS_ORIGINS.split(",")]
+
+    # Backward-compatible aliases for main.py references
+    @property
+    def ENVIRONMENT(self) -> str:
+        return self.APP_ENV
+
+    @property
+    def HOST(self) -> str:
+        return self.API_HOST
+
+    @property
+    def PORT(self) -> int:
+        return self.API_PORT
+
+    @property
+    def LOG_LEVEL(self) -> str:
+        return self.APP_LOG_LEVEL
 
     # --- Cloud AI Providers (optional) ---
     OPENAI_API_KEY: Optional[str] = Field(default=None, alias="OPENAI_API_KEY")

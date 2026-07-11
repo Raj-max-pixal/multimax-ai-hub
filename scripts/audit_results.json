@@ -1,0 +1,72 @@
+{
+  "backend_requirements": [
+    "aiosqlite",
+    "alembic",
+    "argon2-cffi",
+    "fastapi",
+    "httpx",
+    "passlib",
+    "pydantic",
+    "pydantic-settings",
+    "pytest",
+    "pytest-asyncio",
+    "python-dotenv",
+    "python-jose",
+    "python-multipart",
+    "sqlalchemy",
+    "uvicorn"
+  ],
+  "backend_installed_but_unused": [
+    "aiosqlite",
+    "alembic",
+    "argon2-cffi",
+    "pytest",
+    "pytest-asyncio",
+    "python-multipart"
+  ],
+  "backend_missing": [
+    "pkgutil",
+    "__future__",
+    "services",
+    "app",
+    "secrets"
+  ],
+  "frontend_dependencies": [
+    "@hookform/resolvers",
+    "@types/react-syntax-highlighter",
+    "clsx",
+    "date-fns",
+    "framer-motion",
+    "lucide-react",
+    "react",
+    "react-dom",
+    "react-hook-form",
+    "react-markdown",
+    "react-router-dom",
+    "react-syntax-highlighter",
+    "remark-gfm",
+    "tailwind-merge",
+    "zod",
+    "@types/react",
+    "@types/react-dom",
+    "@typescript-eslint/eslint-plugin",
+    "@typescript-eslint/parser",
+    "@vitejs/plugin-react",
+    "autoprefixer",
+    "eslint",
+    "eslint-plugin-react-hooks",
+    "eslint-plugin-react-refresh",
+    "postcss",
+    "tailwindcss",
+    "typescript",
+    "vite"
+  ],
+  "frontend_installed_but_unused": [
+    "@types/react",
+    "@types/react-dom",
+    "@types/react-syntax-highlighter",
+    "date-fns"
+  ],
+  "frontend_missing": [],
+  "dead_imports": []
+}

@@ -178,6 +178,10 @@ class ModuleLoader:
         """Get information about a module."""
         return self._modules.get(name)
 
+    def get_module_names(self) -> List[str]:
+        """Get names of all discovered modules."""
+        return list(self._modules.keys())
+
     def get_all_modules(self) -> List[ModuleInfo]:
         """Get all discovered modules."""
         return list(self._modules.values())
