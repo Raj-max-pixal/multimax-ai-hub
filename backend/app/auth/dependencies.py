@@ -17,6 +17,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from app.auth.service import _decode_token
 from app.auth.service import AuthService
+from app.core.container import get_container
 
 # Bearer token scheme — extracts "Authorization: Bearer <token>" header
 _bearer_scheme = HTTPBearer(
@@ -24,9 +25,15 @@ _bearer_scheme = HTTPBearer(
 )
 
 
+def _get_auth_service() -> AuthService:
+    """Resolve AuthService from the DI container instead of direct construction."""
+    container = get_container()
+    return container.resolve(AuthService)
+
+
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme),
-    auth_service: AuthService = Depends(lambda: AuthService()),
+    auth_service: AuthService = Depends(_get_auth_service),
 ) -> Dict[str, Any]:
     """Require a valid access token.
 
@@ -98,7 +105,7 @@ async def get_current_admin_user(
 
 async def get_optional_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme),
-    auth_service: AuthService = Depends(lambda: AuthService()),
+    auth_service: AuthService = Depends(_get_auth_service),
 ) -> Optional[Dict[str, Any]]:
     """Optionally resolve the current user.
 

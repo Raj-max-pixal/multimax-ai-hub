@@ -1,8 +1,12 @@
 export interface User {
   id: string
   email: string
-  avatar_url?: string
-  full_name?: string
+  username: string
+  display_name: string
+  role: string
+  is_active: boolean
+  is_verified: boolean
+  avatar_url: string
 }
 
 export interface Message {

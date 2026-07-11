@@ -1,177 +1,207 @@
-import { createContext, useContext, useEffect, useState } from 'react'
-import { supabase } from '../lib/supabase'
-import { User } from '../types'
-import { Session } from '@supabase/supabase-js'
+import { createContext, useContext, useEffect, useState, useCallback } from 'react'
+  import {
+  loginUser,
+  registerUser,
+  logoutUser,
+  getCurrentUser,
+  updateCurrentUser as updateUserApi,
+  resetPassword as resetPasswordApi,
+  updatePassword as updatePasswordApi,
+  type UserProfile,
+} from '../lib/auth-api'
+import { setOnRefreshFailed, clearTokens, getAccessToken } from '../lib/api-client'
+
+// ------------------------------------------------------------------ //
+// Types
+// ------------------------------------------------------------------ //
+
+export interface AuthUser {
+  id: string
+  email: string
+  username: string
+  display_name: string
+  role: string
+  is_active: boolean
+  is_verified: boolean
+  avatar_url: string
+}
 
 interface AuthContextType {
-  user: User | null
-  session: Session | null
+  user: AuthUser | null
   loading: boolean
-  signUp: (email: string, password: string, fullName: string) => Promise<{ error: Error | null }>
-  signIn: (email: string, password: string) => Promise<{ error: Error | null }>
-  signInWithGoogle: () => Promise<void>
-  signInWithGitHub: () => Promise<void>
+  signIn: (username: string, password: string) => Promise<{ error: Error | null }>
+  signUp: (email: string, username: string, password: string, display_name?: string) => Promise<{ error: Error | null }>
   signOut: () => Promise<void>
+  updateProfile: (data: Partial<AuthUser>) => Promise<void>
   resetPassword: (email: string) => Promise<{ error: Error | null }>
-  updateProfile: (data: Partial<User>) => Promise<void>
+  updatePassword: (token: string, password: string) => Promise<{ error: Error | null }>
 }
+
+// ------------------------------------------------------------------ //
+// Context
+// ------------------------------------------------------------------ //
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+function mapProfileToUser(p: UserProfile): AuthUser {
+  return {
+    id: p.id,
+    email: p.email,
+    username: p.username,
+    display_name: p.display_name,
+    role: p.role,
+    is_active: p.is_active,
+    is_verified: p.is_verified,
+    avatar_url: p.avatar_url,
+  }
+}
+
+// ------------------------------------------------------------------ //
+// Provider
+// ------------------------------------------------------------------ //
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>({
-    id: 'demo-user',
-    email: 'demo@multimax.ai',
-    full_name: 'Demo User'
-  })
-  const [session, setSession] = useState<Session | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [user, setUser] = useState<AuthUser | null>(null)
+  const [loading, setLoading] = useState(true)
 
+  // ------------------------------------------------------------------ //
+  // On mount: check if we have a stored token, try to restore session
+  // ------------------------------------------------------------------ //
   useEffect(() => {
-    if (supabase) {
-      const init = async () => {
-        setLoading(true)
-        const { data: { session } } = await supabase!.auth.getSession()
-        setSession(session)
-        if (session?.user) {
-          setUser({
-            id: session.user.id,
-            email: session.user.email!,
-            avatar_url: session.user.user_metadata.avatar_url,
-            full_name: session.user.user_metadata.full_name,
-          })
+    const token = getAccessToken()
+    if (!token) {
+      setLoading(false)
+      return
+    }
+
+    let cancelled = false
+
+    ;(async () => {
+      try {
+        const profile = await getCurrentUser()
+        if (!cancelled) {
+          setUser(mapProfileToUser(profile))
         }
-
-        const { data: { subscription } } = supabase!.auth.onAuthStateChange(
-          (_event, session) => {
-            setSession(session)
-            if (session?.user) {
-              setUser({
-                id: session.user.id,
-                email: session.user.email!,
-                avatar_url: session.user.user_metadata.avatar_url,
-                full_name: session.user.user_metadata.full_name,
-              })
-            } else {
-              setUser({
-                id: 'demo-user',
-                email: 'demo@multimax.ai',
-                full_name: 'Demo User'
-              })
-            }
-            setLoading(false)
-          }
-        )
-        
-        setLoading(false)
-
-        return () => subscription.unsubscribe()
+      } catch {
+        // Token invalid or expired — clear it
+        clearTokens()
+      } finally {
+        if (!cancelled) setLoading(false)
       }
-      init()
+    })()
+
+    return () => {
+      cancelled = true
     }
   }, [])
 
-  const signUp = async (email: string, password: string, fullName: string) => {
-    if (!supabase) {
-      setUser({
-        id: 'demo-user',
-        email,
-        full_name: fullName
-      })
-      return { error: null }
-    }
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { data: { full_name: fullName } },
+  // ------------------------------------------------------------------ //
+  // Register a global handler for refresh failures
+  // ------------------------------------------------------------------ //
+  useEffect(() => {
+    setOnRefreshFailed(() => {
+      setUser(null)
     })
-    return { error }
-  }
+  }, [])
 
-  const signIn = async (email: string, password: string) => {
-    if (!supabase) {
-      setUser({
-        id: 'demo-user',
-        email,
-        full_name: 'Demo User'
-      })
+  // ------------------------------------------------------------------ //
+  // signIn
+  // ------------------------------------------------------------------ //
+  const signIn = useCallback(async (username: string, password: string) => {
+    try {
+      const data = await loginUser(username, password)
+      setUser(mapProfileToUser(data.user))
       return { error: null }
+    } catch (err: any) {
+      return { error: err instanceof Error ? err : new Error(String(err)) }
     }
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    return { error }
-  }
+  }, [])
 
-  const signInWithGoogle = async () => {
-    if (!supabase) {
-      setUser({
-        id: 'demo-user',
-        email: 'demo@multimax.ai',
-        full_name: 'Google User'
+  // ------------------------------------------------------------------ //
+  // signUp
+  // ------------------------------------------------------------------ //
+  const signUp = useCallback(
+    async (email: string, username: string, password: string, display_name?: string) => {
+      try {
+        await registerUser(email, username, password, display_name)
+        // Don't auto-login — user must verify email first (if verification is on)
+        // Or we could auto-login them. For now, just return success.
+        return { error: null }
+      } catch (err: any) {
+        return { error: err instanceof Error ? err : new Error(String(err)) }
+      }
+    },
+    [],
+  )
+
+  // ------------------------------------------------------------------ //
+  // signOut
+  // ------------------------------------------------------------------ //
+  const signOut = useCallback(async () => {
+    await logoutUser()
+    setUser(null)
+  }, [])
+
+  // ------------------------------------------------------------------ //
+  // updateProfile
+  // ------------------------------------------------------------------ //
+  const updateProfile = useCallback(async (data: Partial<AuthUser>) => {
+    try {
+      const updated = await updateUserApi({
+        display_name: data.display_name,
+        avatar_url: data.avatar_url,
       })
-      return
+      setUser(mapProfileToUser(updated))
+    } catch (err) {
+      console.error('Failed to update profile:', err)
     }
-    await supabase.auth.signInWithOAuth({ provider: 'google' })
-  }
+  }, [])
 
-  const signInWithGitHub = async () => {
-    if (!supabase) {
-      setUser({
-        id: 'demo-user',
-        email: 'demo@multimax.ai',
-        full_name: 'GitHub User'
-      })
-      return
-    }
-    await supabase.auth.signInWithOAuth({ provider: 'github' })
-  }
-
-  const signOut = async () => {
-    if (supabase) {
-      await supabase.auth.signOut()
-    }
-    setUser({
-      id: 'demo-user',
-      email: 'demo@multimax.ai',
-      full_name: 'Demo User'
-    })
-  }
-
-  const resetPassword = async (email: string) => {
-    if (!supabase) {
+  // ------------------------------------------------------------------ //
+  // resetPassword
+  // ------------------------------------------------------------------ //
+  const resetPassword = useCallback(async (email: string) => {
+    try {
+      await resetPasswordApi(email)
       return { error: null }
+    } catch (err: any) {
+      return { error: err instanceof Error ? err : new Error(String(err)) }
     }
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
-    })
-    return { error }
-  }
+  }, [])
 
-  const updateProfile = async (data: Partial<User>) => {
-    if (supabase && user?.id) {
-      await supabase.auth.updateUser({ data })
+  // ------------------------------------------------------------------ //
+  // updatePassword
+  // ------------------------------------------------------------------ //
+  const updatePassword = useCallback(async (token: string, password: string) => {
+    try {
+      await updatePasswordApi(token, password)
+      return { error: null }
+    } catch (err: any) {
+      return { error: err instanceof Error ? err : new Error(String(err)) }
     }
-    setUser(prev => prev ? { ...prev, ...data } : null)
-  }
+  }, [])
 
   return (
     <AuthContext.Provider
       value={{
         user,
-        session,
         loading,
-        signUp,
         signIn,
-        signInWithGoogle,
-        signInWithGitHub,
+        signUp,
         signOut,
-        resetPassword,
         updateProfile,
+        resetPassword,
+        updatePassword,
       }}
     >
       {children}
     </AuthContext.Provider>
   )
 }
+
+// ------------------------------------------------------------------ //
+// Hook
+// ------------------------------------------------------------------ //
 
 export function useAuth() {
   const context = useContext(AuthContext)

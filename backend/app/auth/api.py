@@ -22,8 +22,15 @@ from app.auth.schemas import (
 )
 from app.auth.service import AuthService
 from app.auth.dependencies import get_current_user, get_current_admin_user
+from app.core.container import get_container
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+
+def _get_auth_service() -> AuthService:
+    """Resolve AuthService from the DI container."""
+    container = get_container()
+    return container.resolve(AuthService)
 
 
 def _user_to_response(user_dict: Dict[str, Any]) -> Dict[str, Any]:
@@ -56,7 +63,7 @@ def _user_to_response(user_dict: Dict[str, Any]) -> Dict[str, Any]:
 )
 async def register(
     data: UserCreate,
-    auth_service: AuthService = Depends(lambda: AuthService()),
+    auth_service: AuthService = Depends(_get_auth_service),
 ):
     """Register a new user account."""
     try:
@@ -82,7 +89,7 @@ async def register(
 )
 async def login(
     data: UserLogin,
-    auth_service: AuthService = Depends(lambda: AuthService()),
+    auth_service: AuthService = Depends(_get_auth_service),
 ):
     """Authenticate and get JWT tokens."""
     try:
@@ -113,7 +120,7 @@ async def login(
 )
 async def refresh(
     data: RefreshRequest,
-    auth_service: AuthService = Depends(lambda: AuthService()),
+    auth_service: AuthService = Depends(_get_auth_service),
 ):
     """Refresh an access token using a refresh token."""
     try:
@@ -141,7 +148,7 @@ async def refresh(
 )
 async def logout(
     data: RefreshRequest,
-    auth_service: AuthService = Depends(lambda: AuthService()),
+    auth_service: AuthService = Depends(_get_auth_service),
 ):
     """Logout by revoking the refresh token."""
     await auth_service.logout(data.refresh_token)
@@ -172,7 +179,7 @@ async def get_me(
 )
 async def update_me(
     data: UserUpdate,
-    auth_service: AuthService = Depends(lambda: AuthService()),
+    auth_service: AuthService = Depends(_get_auth_service),
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Update the current user's profile."""
@@ -212,7 +219,7 @@ async def update_me(
 )
 async def change_password(
     data: PasswordChange,
-    auth_service: AuthService = Depends(lambda: AuthService()),
+    auth_service: AuthService = Depends(_get_auth_service),
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Change the current user's password."""
@@ -242,7 +249,7 @@ async def change_password(
     description="Get a paginated list of all users. Requires admin role.",
 )
 async def list_users(
-    auth_service: AuthService = Depends(lambda: AuthService()),
+    auth_service: AuthService = Depends(_get_auth_service),
     current_user: Dict[str, Any] = Depends(get_current_admin_user),
 ):
     """List all users (admin only)."""

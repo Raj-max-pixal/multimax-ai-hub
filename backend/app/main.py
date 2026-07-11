@@ -1,20 +1,15 @@
 """
-Application Factory.
-============================================================
+Application Factory for Multimax AI Hub.
 
-Creates and configures the FastAPI application for Multimax AI Hub.
-Handles lifespan events (startup/shutdown), dependency injection,
-middleware, exception handlers, and module registration.
-
-Usage:
-    uvicorn app.main:create_app --factory --port 8000
+Creates and configures the FastAPI application instance with all
+domain modules, middleware, and infrastructure services.
 """
 
 from __future__ import annotations
 
-import asyncio
+import os
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator, Dict
+from typing import Any, AsyncGenerator, Dict
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,231 +17,273 @@ from fastapi.responses import JSONResponse
 
 from app.core.config import Settings, get_settings
 from app.core.container import Container, get_container
-from app.core.database import DatabaseManager, init_database, get_database
-from app.core.events import EventBus, create_event_bus
+from app.core.database import get_database
+from app.core.events import create_event_bus
 from app.core.exceptions import MultimaxError
-from app.core.logger import get_logger
+from app.core.logger import get_logger, setup_logging
 from app.core.module_loader import ModuleLoader
 
 logger = get_logger("app.main")
 
 
 # --------------------------------------------------------------------------- #
-# Application State (accessible via app.state or request.app.state)
+# Application State
 # --------------------------------------------------------------------------- #
+
 
 class AppState:
-    """Holds references to core services for the app lifetime."""
+    """Holds global application state."""
 
     def __init__(self) -> None:
-        self.settings: Settings | None = None
-        self.container: Container | None = None
-        self.database: DatabaseManager | None = None
-        self.event_bus: EventBus | None = None
-        self.module_loader: ModuleLoader | None = None
+        self.settings: Settings = get_settings()
+        self.container: Container = get_container()
+        self.module_loader: ModuleLoader = ModuleLoader()
+        self.event_bus = create_event_bus(self.settings)
+        self.database = get_database()
 
 
 # --------------------------------------------------------------------------- #
-# Lifecycle Manager
+# Lifespan Manager
 # --------------------------------------------------------------------------- #
+
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Application lifespan handler (startup → serve → shutdown).
-
-    Startup sequence:
-        1. Load settings
-        2. Initialize the DI container
-        3. Initialize the database engine
-        4. Create & start the event bus
-        5. Create tables (dev-only, safe to run repeatedly)
-        6. Discover & load domain modules
-        7. Set up app state references
-    """
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """Application lifespan: startup and shutdown lifecycle."""
     # --- Startup ---
-    logger.info("=" * 60)
-    logger.info("  Multimax AI Hub – Starting up")
-    logger.info("=" * 60)
-
     settings = get_settings()
-    container = get_container()
-    state = AppState()
+    setup_logging(settings)
 
-    try:
-        # Database – gracefully handle failure so app can serve health checks
-        database = init_database(settings)
+    logger.info(f"Multimax AI Hub starting — environment: {settings.ENVIRONMENT}")
+
+    # Initialize app state
+    app_state = AppState()
+    app.state.multimax = app_state
+
+    # Initialize database
+    await app_state.database.initialize()
+
+    # Start event bus
+    await app_state.event_bus.start()
+
+    # Load domain modules
+    _load_domain_modules(app, app_state)
+
+    # Warn if default secret keys are used in production
+    _warn_default_secrets(settings)
+
+    logger.info("Startup complete")
+
+    yield  # Application runs here
+
+    # --- Shutdown ---
+    logger.info("Shutting down...")
+    await app_state.event_bus.stop()
+    await app_state.database.close()
+    logger.info("Shutdown complete")
+
+
+def _load_domain_modules(app: FastAPI, app_state: AppState) -> None:
+    """Import and register all domain modules."""
+    domain_module_packages = ["app.auth", "app.workspace"]
+
+    for package_name in domain_module_packages:
         try:
-            await database.initialize()
-            logger.info("Database engine initialized")
-        except Exception as db_err:
-            logger.warning(f"Database initialization skipped: {db_err}. App running in degraded mode.")
-            database = None  # Allow the app to start without database
+            import importlib
+            module = importlib.import_module(package_name)
 
-        # Event bus
-        event_bus = create_event_bus(settings)
-        await event_bus.start()
-        logger.info(f"Event bus started (backend={settings.EVENT_BUS_BACKEND})")
+            # Each module exposes module_info and register()
+            info = getattr(module, "module_info", None)
+            if info:
+                logger.info(f"Discovered module: {info.name} ({package_name})")
 
-        # Module loader – discover and load all domain modules
-        module_loader = ModuleLoader()
-        discovered = module_loader.discover("app")
-        logger.info(f"Module discovery complete: {len(discovered)} module(s) found")
+            register_func = getattr(module, "register", None)
+            if register_func:
+                register_func(app, app_state.container)
+                logger.info(f"Module '{package_name}' loaded successfully")
+            else:
+                logger.warning(f"Module '{package_name}' has no register() function")
+        except Exception as e:
+            logger.error(f"Failed to load module '{package_name}': {e}", exc_info=True)
 
-        # Load discovered modules (this registers all models with Base.metadata)
-        results = module_loader.load_all(app, container)
-        loaded = [name for name, ok in results.items() if ok]
-        failed = [name for name, ok in results.items() if not ok]
-        if loaded:
-            logger.info(f"Modules loaded: {', '.join(loaded)}")
-        if failed:
-            logger.warning(f"Modules failed to load: {', '.join(failed)}")
 
-        # Create tables in dev AFTER module discovery so all models are registered
-        if settings.APP_ENV in ("development", "test") and database is not None:
-            try:
-                await database.create_all()
-                logger.info("Database tables created/verified")
-            except Exception as db_err:
-                logger.warning(f"Could not create tables: {db_err} (database may not be available yet)")
+def _warn_default_secrets(settings: Settings) -> None:
+    """Warn on startup if default secrets are being used."""
+    defaults = {
+        "APP_SECRET_KEY": "change-me-to-a-random-secret-key",
+        "AUTH_SECRET_KEY": "change-me-to-another-random-secret",
+    }
+    for name, default in defaults.items():
+        current = getattr(settings, name, None)
+        if current == default:
+            logger.warning(
+                f"SECURITY: {name} is set to default value. "
+                "Generate a random secret for production."
+            )
 
-        # Store state on the app
-        state.settings = settings
-        state.container = container
-        state.database = database
-        state.event_bus = event_bus
-        state.module_loader = module_loader
-        app.state.multimax = state
 
-        logger.info("Multimax AI Hub startup complete")
-        yield  # <-- Application serves requests here
+# --------------------------------------------------------------------------- #
+# Middleware
+# --------------------------------------------------------------------------- #
 
-    except Exception as exc:
-        logger.critical(f"Startup failed: {exc}", exc_info=True)
-        # Still yield so health checks can respond even on partial startup
-        app.state.multimax = state
-        yield
 
-    finally:
-        # --- Shutdown ---
-        logger.info("Shutting down Multimax AI Hub…")
+def _setup_middleware(app: FastAPI, settings: Settings) -> None:
+    """Configure application middleware."""
+    # CORS
+    origins = settings.CORS_ORIGINS
+    if isinstance(origins, str):
+        origins = [o.strip() for o in origins.split(",") if o.strip()]
 
-        if state.event_bus:
-            await state.event_bus.stop()
-            logger.info("Event bus stopped")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins or ["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
-        if state.database:
-            await state.database.close()
-            logger.info("Database connections closed")
-
-        logger.info("Shutdown complete. Goodbye.")
+    # Request logging middleware
+    @app.middleware("http")
+    async def log_requests(request: Request, call_next: Any) -> Any:
+        logger.debug(f"{request.method} {request.url.path}")
+        response = await call_next(request)
+        logger.debug(f"{request.method} {request.url.path} → {response.status_code}")
+        return response
 
 
 # --------------------------------------------------------------------------- #
 # Health Endpoints
 # --------------------------------------------------------------------------- #
 
-async def health_live() -> Dict[str, Any]:
-    """Liveness probe – lightweight check that the process is alive."""
-    return {
-        "status": "ok",
-        "app": "Multimax AI Hub",
-        "version": get_settings().APP_VERSION,
-    }
 
+def _setup_health_endpoints(app: FastAPI) -> None:
+    """Add health check endpoints."""
 
-async def health_ready(request: Request) -> Dict[str, Any]:
-    """Readiness probe – verifies core services are operational."""
-    try:
-        state: AppState = request.app.state.multimax
-        checks = {
-            "settings": state.settings is not None,
-            "container": state.container is not None,
-            "database": state.database is not None,
-            "event_bus": state.event_bus is not None,
-        }
-        all_ok = all(checks.values())
+    @app.get("/health/live", tags=["health"])
+    async def liveness():
+        """Liveness probe — always returns 200 if the app is running."""
+        return {"status": "alive", "service": "multimax-ai-hub"}
+
+    @app.get("/health/ready", tags=["health"])
+    async def readiness():
+        """Readiness probe — returns 503 if the app hasn't initialized."""
+        app_state: AppState = getattr(app.state, "multimax", None)
+        if app_state is None:
+            return JSONResponse(
+                status_code=503,
+                content={"status": "unavailable", "reason": "Application not initialized"},
+            )
+
+        # Check database connectivity
+        try:
+            await app_state.database.ping()
+            db_ok = True
+        except Exception as e:
+            logger.warning(f"Database ping failed: {e}")
+            db_ok = False
+
+        if not db_ok:
+            return JSONResponse(
+                status_code=503,
+                content={"status": "unavailable", "reason": "Database not reachable"},
+            )
+
         return {
-            "status": "ok" if all_ok else "degraded",
-            "checks": checks,
+            "status": "ready",
+            "modules": list(app_state.module_loader.get_all_modules().keys())
+            if hasattr(app_state.module_loader, "_modules")
+            else [],
         }
-    except AttributeError:
-        return JSONResponse(
-            status_code=503,
-            content={"status": "unavailable", "message": "App state not initialized"},
-        )
 
 
 # --------------------------------------------------------------------------- #
 # Exception Handlers
 # --------------------------------------------------------------------------- #
 
-async def multimax_error_handler(request: Request, exc: MultimaxError) -> JSONResponse:
-    """Handle known application exceptions with appropriate status codes."""
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={
-            "error": exc.error_code,
-            "message": exc.detail,
-            "context": exc.context,
-        },
-    )
 
+def _setup_exception_handlers(app: FastAPI) -> None:
+    """Register custom exception handlers on the app instance."""
 
-async def general_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    """Catch-all for unhandled exceptions."""
-    logger.error(f"Unhandled exception: {exc}", exc_info=True)
-    return JSONResponse(
-        status_code=500,
-        content={"error": "INTERNAL_ERROR", "message": "An unexpected error occurred."},
-    )
+    @app.exception_handler(MultimaxError)
+    async def multimax_error_handler(request: Request, exc: MultimaxError) -> JSONResponse:
+        """Handle all MultimaxError exceptions with consistent JSON format."""
+        status_map: Dict[str, int] = {
+            "VALIDATION_ERROR": 422,
+            "NOT_FOUND": 404,
+            "AUTHENTICATION_ERROR": 401,
+            "AUTHORIZATION_ERROR": 403,
+            "DUPLICATE_ERROR": 409,
+            "RATE_LIMIT_ERROR": 429,
+            "CONFIGURATION_ERROR": 500,
+            "EXTERNAL_SERVICE_ERROR": 502,
+            "INTERNAL_ERROR": 500,
+        }
+        status_code = status_map.get(exc.code, 500)
+
+        content = {
+            "error": exc.code,
+            "message": exc.message,
+            "context": exc.details,
+        }
+        return JSONResponse(status_code=status_code, content=content)
+
+    @app.exception_handler(Exception)
+    async def generic_error_handler(request: Request, exc: Exception) -> JSONResponse:
+        """Catch-all for unhandled exceptions."""
+        logger.error(f"Unhandled exception: {exc}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "INTERNAL_ERROR",
+                "message": "An unexpected error occurred",
+                "context": {},
+            },
+        )
 
 
 # --------------------------------------------------------------------------- #
-# Factory
+# Application Factory
 # --------------------------------------------------------------------------- #
+
 
 def create_app() -> FastAPI:
-    """Application factory – creates and returns a configured FastAPI instance.
+    """Create and configure the FastAPI application.
 
-    This is the entry point called by uvicorn:
-        uvicorn app.main:create_app --factory
+    Returns:
+        Fully configured FastAPI instance ready for uvicorn.
     """
     settings = get_settings()
 
     app = FastAPI(
-        title=settings.APP_NAME,
-        version=settings.APP_VERSION,
-        description="Multimax AI Hub – AI Operating System Backend",
+        title="Multimax AI Hub",
+        description="The AI Operating System — unified platform for chat, code, research, and automation",
+        version="0.1.0",
         lifespan=lifespan,
-        docs_url="/docs" if settings.APP_DEBUG else None,
-        redoc_url="/redoc" if settings.APP_DEBUG else None,
+        docs_url="/docs",
+        redoc_url="/redoc",
     )
 
-    # --- CORS ---
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.cors_origins,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-
-    # --- Health routes ---
-    app.add_api_route("/health/live", health_live, tags=["health"])
-    app.add_api_route("/health/ready", health_ready, tags=["health"])
-    app.add_api_route("/health", health_live, tags=["health"])  # alias
-
-    # --- Exception handlers ---
-    app.add_exception_handler(MultimaxError, multimax_error_handler)
-    app.add_exception_handler(Exception, general_exception_handler)
-
-    logger.info(
-        "FastAPI application created",
-        extra={
-            "app": settings.APP_NAME,
-            "version": settings.APP_VERSION,
-            "env": settings.APP_ENV,
-        },
-    )
+    # Setup all application layers
+    _setup_middleware(app, settings)
+    _setup_health_endpoints(app)
+    _setup_exception_handlers(app)
 
     return app
+
+
+# --------------------------------------------------------------------------- #
+# Direct execution
+# --------------------------------------------------------------------------- #
+
+if __name__ == "__main__":
+    import uvicorn
+
+    settings = get_settings()
+    uvicorn.run(
+        "app.main:create_app",
+        host=settings.HOST,
+        port=settings.PORT,
+        reload=settings.ENVIRONMENT == "development",
+        factory=True,
+        log_level=settings.LOG_LEVEL.lower(),
+    )

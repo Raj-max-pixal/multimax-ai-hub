@@ -145,11 +145,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                 >
                   <div className="w-10 h-10 bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center text-white font-semibold">
-                    {user?.full_name?.charAt(0) || user?.email?.charAt(0)?.toUpperCase() || 'U'}
+                    {user?.display_name?.charAt(0) || user?.username?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || 'U'}
                   </div>
                   <div className="hidden sm:block text-left">
                     <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                      {user?.full_name || 'User'}
+                      {user?.display_name || user?.username || 'User'}
                     </p>
                     <p className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-[150px]">
                       {user?.email}
@@ -167,7 +167,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                     >
                       <div className="p-4 border-b border-slate-200 dark:border-slate-800">
                         <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                          {user?.full_name || 'User'}
+                          {user?.display_name || user?.username || 'User'}
                         </p>
                         <p className="text-xs text-slate-500 dark:text-slate-400">
                           {user?.email}

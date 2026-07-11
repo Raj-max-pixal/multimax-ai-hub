@@ -80,7 +80,7 @@ services:
       - ../backend:/app
       - backend_uploads:/app/uploads
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health/live"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/live"]
       interval: 10s
       timeout: 5s
       retries: 3
