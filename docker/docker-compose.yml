@@ -1,0 +1,137 @@
+version: "3.9"
+
+name: multimax-ai-hub
+
+services:
+  # ============================================================
+  # PostgreSQL — Primary database
+  # ============================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: multimax-postgres
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-multimax}
+      POSTGRES_USER: ${POSTGRES_USER:-multimax}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-multimax_dev}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-multimax} -d ${POSTGRES_DB:-multimax}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - multimax-network
+
+  # ============================================================
+  # ChromaDB — Vector database for embeddings
+  # ============================================================
+  chromadb:
+    image: chromadb/chroma:0.5.13
+    container_name: multimax-chromadb
+    restart: unless-stopped
+    ports:
+      - "${CHROMADB_PORT:-8001}:8000"
+    environment:
+      IS_PERSISTENT: "TRUE"
+      PERSIST_DIRECTORY: /chroma/data
+      ANONYMIZED_TELEMETRY: "FALSE"
+    volumes:
+      - chromadb_data:/chroma/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - multimax-network
+
+  # ============================================================
+  # Backend — FastAPI application
+  # ============================================================
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.backend
+    container_name: multimax-backend
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
+    env_file:
+      - ../backend/.env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      CHROMADB_HOST: chromadb
+      CHROMADB_PORT: 8000
+      OLLAMA_HOST: ${OLLAMA_HOST:-host.docker.internal}
+      OLLAMA_PORT: ${OLLAMA_PORT:-11434}
+    volumes:
+      - ../backend:/app
+      - backend_uploads:/app/uploads
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - multimax-network
+
+  # ============================================================
+  # Frontend — Next.js application (Phase 0 deferred, placeholder)
+  # ============================================================
+  # Frontend will be added after Step 4 (post-auth)
+  # frontend:
+  #   build:
+  #     context: ..
+  #     dockerfile: docker/Dockerfile.frontend
+  #   container_name: multimax-frontend
+  #   restart: unless-stopped
+  #   ports:
+  #     - "${FRONTEND_PORT:-3000}:3000"
+  #   depends_on:
+  #     - backend
+  #   env_file:
+  #     - ../frontend/.env
+  #   networks:
+  #     - multimax-network
+
+  # ============================================================
+  # Nginx — Reverse proxy (Phase 0 deferred, placeholder)
+  # ============================================================
+  # nginx:
+  #   image: nginx:alpine
+  #   container_name: multimax-nginx
+  #   restart: unless-stopped
+  #   ports:
+  #     - "${NGINX_PORT:-80}:80"
+  #     - "${NGINX_SSL_PORT:-443}:443"
+  #   volumes:
+  #     - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
+  #   depends_on:
+  #     - backend
+  #   networks:
+  #     - multimax-network
+
+volumes:
+  postgres_data:
+    driver: local
+  chromadb_data:
+    driver: local
+  backend_uploads:
+    driver: local
+
+networks:
+  multimax-network:
+    driver: bridge

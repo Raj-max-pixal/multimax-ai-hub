@@ -1,251 +1,274 @@
-<<<<<<< HEAD
 # Multimax AI Hub
 
-A modern AI platform that brings multiple AI tools together into one cohesive interface.
+> **The world's most powerful free AI Operating System.**
+>
+> One platform to replace ChatGPT, Claude, Cursor, Copilot, Perplexity, NotebookLM, Browser Use, n8n, and Open WebUI.
 
-## Features
+---
 
-- **AI Chat** - Chat with local models using Ollama
-- **PDF Chat** - Upload and interact with your documents
-- **Voice Assistant** - Speech-to-text transcription
-- **Authentication** - Login/Signup with email, Google, and GitHub
-- **Dark/Light Theme** - Toggle between themes
-- **Responsive Design** - Works on mobile and desktop
+## Vision
+
+Build the world's most powerful free AI Operating System by combining the best open-source AI technologies into one unified platform.
+
+Instead of users opening multiple AI tools separately, they should only need **one application**: **Multimax AI Hub**.
+
+This is **not** another chatbot.
+This is an **AI Operating System**.
+
+## Features (Planned)
+
+| Phase | Feature | Description |
+|-------|---------|-------------|
+| 0 | **Foundation** | Authentication, Dashboard, Docker, Settings, Database |
+| 1 | **AI Chat** | Chat with streaming, markdown, code highlighting, file uploads |
+| 2 | **Coding Assistant** | Code generation, bug fixing, refactoring, Git integration |
+| 3 | **Research Engine** | Web search, deep research, citation support |
+| 4 | **AI Agents** | Browser control, task execution, automation |
+| 5 | **Document Intelligence** | PDF chat, OCR, summaries, mind maps |
+| 6 | **Memory** | Long-term memory, knowledge graph, conversation recall |
+| 7 | **Voice AI** | Speech-to-text, text-to-speech, voice chat |
+| 8 | **Image Studio** | Image generation, editing, upscaling |
+| 9 | **Video Studio** | Video generation, subtitles, avatar videos |
+| 10 | **Workflow Automation** | Visual workflow builder, integrations |
+| 11 | **Plugin Marketplace** | Install plugins, MCP servers, community extensions |
+| 12 | **Team Workspace** | Organizations, shared chats, permissions |
+| 13 | **Marketplace** | Publish agents, prompts, templates, plugins |
+| 14 | **Mobile Apps** | Android, iOS, Tablet |
+| 15 | **Enterprise** | SSO, audit logs, RBAC, enterprise APIs |
 
 ## Tech Stack
 
 ### Frontend
-- React 18 + TypeScript
-- Vite
-- Tailwind CSS
-- React Router
-- Framer Motion
-- Lucide Icons
-- Supabase
+| Technology | Purpose |
+|------------|---------|
+| **Next.js** | React framework |
+| **TypeScript** | Type-safe JavaScript |
+| **Tailwind CSS** | Utility-first CSS |
+| **Shadcn UI** | Component library |
+| **Vercel AI SDK** | AI streaming & tool calls |
 
 ### Backend
-- FastAPI (Python)
-- Ollama integration
+| Technology | Purpose |
+|------------|---------|
+| **FastAPI** | Python async web framework |
+| **SQLAlchemy** | ORM with async support |
+| **Alembic** | Database migrations |
+| **Pydantic** | Data validation & settings |
+| **ChromaDB** | Vector database |
 
-## Getting Started
+### Infrastructure
+| Technology | Purpose |
+|------------|---------|
+| **PostgreSQL** | Primary database |
+| **Redis** | Caching & rate limiting |
+| **Docker** | Containerization |
+| **Docker Compose** | Multi-container orchestration |
+| **Ollama** | Local AI model serving |
 
-### Prerequisites
-1. Node.js 18+
-2. Python 3.10+
-3. Supabase account
-4. Ollama (optional, for local AI)
+### AI Models (Local First)
+- **Qwen 3** — Reasoning & vision
+- **DeepSeek** — Coding
+- **Llama 3** — Writing & general
+- **Mistral** — Fast responses
+- **Gemma** — Lightweight tasks
+- **Phi** — Edge deployment
 
-### Frontend Setup
-
-```bash
-cd frontend
-npm install
-# Copy .env.example to .env and configure your Supabase credentials
-npm run dev
-```
-
-### Backend Setup
-
-```bash
-cd backend
-python -m venv venv
-# Activate venv (Windows: venv\Scripts\activate | Mac/Linux: source venv/bin/activate)
-pip install -r requirements.txt
-# Copy .env.example to .env
-uvicorn main:app --reload --port 8000
-```
-
-### Supabase Setup
-
-1. Create a Supabase project at https://supabase.com
-2. Copy your project URL and anon key
-3. Configure authentication providers (Email, Google, GitHub)
+Users can also connect their own API keys for cloud models (OpenAI, Claude, Gemini, OpenRouter).
 
 ## Project Structure
 
 ```
-├── frontend/
-│   ├── src/
-│   │   ├── components/
-│   │   ├── contexts/
-│   │   ├── pages/
-│   │   ├── lib/
-│   │   └── types/
-│   └── package.json
+multimax-ai-hub/
+├── .azure/                    # Architecture documentation
+│   └── architecture/
+│       ├── adr/               # Architecture Decision Records
+│       ├── ARCHITECTURE_REVIEW.md
+│       └── SOFTWARE_ARCHITECTURE_DOCUMENT.md
+├── .devcontainer/             # VS Code Dev Container
+│   ├── devcontainer.json
+│   └── setup.sh
+├── .github/
+│   └── workflows/
+│       ├── ci.yml             # Continuous Integration
+│       └── deploy.yml         # Deployment
 ├── backend/
-│   ├── main.py
-│   └── requirements.txt
+│   ├── app/
+│   │   ├── core/              # Platform core (DI, config, events, DB)
+│   │   ├── shared/            # Shared interfaces & base classes
+│   │   ├── workspace/         # Workspace module (example domain)
+│   │   └── main.py            # Application entry point
+│   ├── tests/                 # Backend tests
+│   ├── migrations/            # Alembic migrations
+│   ├── requirements.txt
+│   └── .env.example
+├── frontend/
+│   ├── src/                   # Next.js application
+│   ├── public/                # Static assets
+│   ├── package.json
+│   └── .env.example
+├── docker/
+│   ├── docker-compose.yml     # Multi-service orchestration
+│   ├── Dockerfile.backend     # Backend image
+│   └── Dockerfile.frontend    # Frontend image
+├── .editorconfig
+├── .pre-commit-config.yaml
+├── Makefile                   # Development commands
 └── README.md
 ```
 
-## License
+## Getting Started
 
-MIT
-=======
-<div align="center">
+### Prerequisites
 
-# ⚡ Multimax AI Hub
+- **Python 3.11+**
+- **Node.js 20+**
+- **Docker & Docker Compose** (optional, for full stack)
+- **Ollama** (optional, for local AI models)
 
-### The All-in-One AI Workspace
-
-Build. Create. Code. Research. Automate.
-
-<p>
-  <img src="https://img.shields.io/badge/Status-Active-success?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/Version-v1.0-blue?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/License-MIT-orange?style=for-the-badge" />
-</p>
-
-<p>
-  <strong>One intelligent workspace for everything AI.</strong>
-</p>
-
-</div>
-
----
-
-## 🚀 Overview
-
-Multimax AI Hub is a modern AI platform designed to bring the most powerful AI capabilities into one seamless experience.
-
-Whether you're a developer, student, creator, researcher, or business professional, Multimax AI Hub helps you work faster with intelligent tools powered by advanced AI.
-
----
-
-## ✨ Features
-
-- 💬 AI Chat Assistant
-- 🤖 Multiple AI Models
-- 🧠 AI Agents
-- 💻 Coding Assistant
-- 📄 PDF & Document Analysis
-- 🎤 Voice Conversations
-- 🖼️ AI Image Generation
-- 🎥 AI Video Generation
-- ✍️ Content Writing
-- 🌐 Web Search
-- 📁 File Upload & Analysis
-- 💾 Chat History
-- 🔒 Secure Authentication
-- 🌙 Modern Dark UI
-- 📱 Responsive Design
-
----
-
-## 🛠 Tech Stack
-
-### Frontend
-
-- React
-- Next.js
-- TypeScript
-- Tailwind CSS
-
-### Backend
-
-- Node.js
-- Firebase
-- REST APIs
-
-### AI
-
-- Gemini
-- OpenAI Compatible APIs
-- AI Agents
-- Multimodal Models
-
----
-
-## 📸 Screenshots
-
-> Add screenshots here.
-
-| Home | Chat |
-|------|------|
-| Image | Image |
-
----
-
-## 📈 Roadmap
-
-- [x] AI Chat
-- [x] Authentication
-- [x] Responsive UI
-- [ ] AI Voice Assistant
-- [ ] Image Generation
-- [ ] Video Generation
-- [ ] AI Workspace
-- [ ] Browser Extension
-- [ ] Desktop Application
-- [ ] Mobile App
-
----
-
-## ⚙️ Installation
+### Quick Start (Development)
 
 ```bash
-git clone https://github.com/yourusername/multimax-ai-hub.git
-
+# 1. Clone the repository
+git clone https://github.com/your-org/multimax-ai-hub.git
 cd multimax-ai-hub
 
-npm install
+# 2. Install dependencies
+make setup
 
-npm run dev
+# 3. Start the backend
+make dev-backend
+
+# 4. In another terminal, start the frontend
+make dev-frontend
 ```
 
----
+### Full Stack with Docker
 
-## 📂 Project Structure
+```bash
+# Start all services
+make dev-docker
 
-```
-src/
- ├── app/
- ├── components/
- ├── hooks/
- ├── services/
- ├── utils/
- ├── assets/
- └── types/
+# Backend:  http://localhost:8000
+# Frontend: http://localhost:5173
+# API Docs: http://localhost:8000/docs
 ```
 
----
+### Environment Setup
 
-## 🌍 Vision
+Copy the example environment files:
 
-Multimax AI Hub is the first step toward building the Multimax ecosystem—a unified suite of AI-powered products designed to simplify creation, productivity, and automation.
+```bash
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env
+```
 
-Future products include:
+Then edit the files to configure your environment.
 
-- ☁️ Multimax Cloud
-- 📄 Multimax Office
-- 💾 Multimax Drive
-- 💬 Multimax Connect
-- 🎮 Multimax Gaming
-- 💻 Multimax Studio
+## Development
 
----
+### Commands
 
-## 🤝 Contributing
+| Command | Description |
+|---------|-------------|
+| `make setup` | Install all dependencies |
+| `make dev-backend` | Start backend dev server |
+| `make dev-frontend` | Start frontend dev server |
+| `make dev-docker` | Start all Docker services |
+| `make test` | Run all tests |
+| `make test-backend` | Run backend tests |
+| `make test-frontend` | Run frontend tests |
+| `make lint` | Run all linters |
+| `make format` | Format all code |
+| `make clean` | Clean build artifacts |
+| `make check` | Run lint + test + build |
+| `make migrate` | Run database migrations |
+| `make migrate-new msg="description"` | Create a new migration |
+| `make docker-logs` | View Docker logs |
+| `make docker-down` | Stop Docker services |
 
-Contributions, ideas, and feedback are always welcome.
+### Code Quality
 
-Feel free to open an issue or submit a pull request.
+- **Ruff** for Python linting and formatting
+- **ESLint** + **Prettier** for frontend code
+- **MyPy** for Python type checking
+- **TypeScript** for type-safe frontend
+- **Pre-commit hooks** for automated checks
 
----
+## Architecture
 
-## ⭐ Support
+### Core Principles
 
-If you like this project, please consider giving it a ⭐ on GitHub.
+1. **Domain-Driven Modules** — Each feature is an independent domain module
+2. **Event-Driven Communication** — Modules communicate via an event bus
+3. **AI Provider Abstraction** — Models are interchangeable behind a common interface
+4. **Zero Budget** — Free and open-source technologies only
+5. **Self-Hostable** — Everything runs locally with Docker
 
-It helps the project grow and motivates future development.
+### Architecture Decisions
+
+All significant architectural decisions are documented as **Architecture Decision Records (ADRs)** in `.azure/architecture/adr/`.
+
+| ADR | Title | Status |
+|-----|-------|--------|
+| 001 | [Use Architecture Decision Records](.azure/architecture/adr/ADR-001-record-architecture-decisions.md) | ✅ Accepted |
+| 002 | [Domain-Driven Module Architecture](.azure/architecture/adr/ADR-002-domain-modules.md) | ✅ Accepted |
+| 003 | [AI Provider Abstraction Layer](.azure/architecture/adr/ADR-003-ai-provider-abstraction.md) | ✅ Accepted |
+| 004 | [Event-Driven Communication](.azure/architecture/adr/ADR-004-event-driven-communication.md) | ✅ Accepted |
+| 005 | [Zero-Budget Open Source Stack](.azure/architecture/adr/ADR-005-zero-budget-stack.md) | ✅ Accepted |
+
+For a detailed review of the architecture, see:
+- [Architecture Review](.azure/architecture/ARCHITECTURE_REVIEW.md)
+- [Software Architecture Document](.azure/architecture/SOFTWARE_ARCHITECTURE_DOCUMENT.md)
+
+## Roadmap
+
+See [Phase 0 Implementation Plan](PHASE0_IMPLEMENTATION_PLAN.md) for the detailed roadmap.
+
+### Phase 0 — Foundation ✅
+- [x] Project architecture & ADRs
+- [x] Docker configuration
+- [x] Core platform (DI, config, events, DB)
+- [x] Workspace module (example domain)
+- [x] CI/CD & developer tooling
+- [ ] Authentication system
+- [ ] Dashboard UI
+- [ ] Settings & theme
+- [ ] Logging & monitoring
+- [ ] Deployment automation
+
+### Phase 1 — AI Chat (In Development)
+- Chat interface with streaming
+- Markdown & code highlighting
+- File & image uploads
+- Chat history management
+- Prompt library & personas
+
+### Phases 2-15
+See the [full project document](#) for the complete roadmap.
+
+## License
+
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+
+## Acknowledgments
+
+Multimax AI Hub builds upon the incredible work of the open-source community:
+
+- [Open WebUI](https://github.com/open-webui/open-webui)
+- [Crawl4AI](https://github.com/unclecode/crawl4ai)
+- [Browser Use](https://github.com/gregpr07/browser-use)
+- [Langflow](https://github.com/logspace-ai/langflow)
+- [n8n](https://github.com/n8n-io/n8n)
+- [Ollama](https://github.com/ollama/ollama)
+- [Continue.dev](https://github.com/continuedev/continue)
+- [LiteLLM](https://github.com/BerriAI/litellm)
+- [ChromaDB](https://github.com/chroma-core/chroma)
+- [Supabase](https://github.com/supabase/supabase)
+- [Shadcn UI](https://github.com/shadcn-ui/ui)
+- [Vercel AI SDK](https://github.com/vercel/ai)
 
 ---
 
 <div align="center">
-
-### Built with ❤️ by Multimax
-
-**Beyond Tech. Beyond Limit.**
-
+  <sub>Built with ❤️ by the Multimax team. </sub>
 </div>
->>>>>>> 461cffab37c6ce39b6b4393e7f328d1036ff2296
