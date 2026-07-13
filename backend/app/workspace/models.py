@@ -59,6 +59,7 @@ class Workspace(Base):
     # Relationships
     members = relationship("WorkspaceMember", back_populates="workspace", cascade="all, delete-orphan")
     projects = relationship("Project", back_populates="workspace", cascade="all, delete-orphan")
+    chat_sessions = relationship("ChatSession", back_populates="workspace", cascade="all, delete-orphan")
 
     __table_args__ = (
         Index("idx_workspace_owner", "owner_id"),
