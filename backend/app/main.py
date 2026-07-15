@@ -90,7 +90,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 def _load_domain_modules(app: FastAPI, app_state: AppState) -> None:
     """Import and register all domain modules."""
-    domain_module_packages = ["app.auth", "app.workspace", "app.chat"]
+    domain_module_packages = ["app.auth", "app.workspace", "app.chat", "app.document"]
 
     for package_name in domain_module_packages:
         try:

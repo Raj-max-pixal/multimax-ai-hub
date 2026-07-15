@@ -31,6 +31,7 @@ def register(app: Any, container: Any) -> None:
     app.include_router(router)
 
     from app.document.service import DocumentService
+
     container.register_singleton(DocumentService, DocumentService())
 
 

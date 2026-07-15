@@ -1,45 +1,88 @@
 """
-Document Domain Models.
+Document database models.
 
-Defines Pydantic models for document metadata (not SQLAlchemy ORM).
-The legacy implementation used an in-memory list; we preserve that behavior.
+Migrated from legacy services/storage_service.py and services/document_service.py.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+import uuid
+from datetime import datetime, timezone
+
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship
+
+from app.core.database import Base
 
 
-@dataclass
-class DocumentRecord:
-    """In-memory document metadata record matching legacy documents_db format."""
+class DocumentRecord(Base):
+    """Represents an uploaded document in the system."""
 
-    id: str
-    filename: str
-    saved_filename: str
-    file_type: str
-    file_size: int
-    chunk_count: int
-    status: str = "processed"
+    __tablename__ = "documents"
 
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "id": self.id,
-            "filename": self.filename,
-            "saved_filename": self.saved_filename,
-            "file_type": self.file_type,
-            "file_size": self.file_size,
-            "chunk_count": self.chunk_count,
-            "status": self.status,
-        }
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    filename = Column(String(512), nullable=False)
+    original_filename = Column(String(512), nullable=False)
+    file_path = Column(String(1024), nullable=False)
+    file_size = Column(Integer, nullable=False, default=0)
+    mime_type = Column(String(128), nullable=True)
+    status = Column(String(32), nullable=False, default="uploaded")  # uploaded, processing, indexed, error
+    error_message = Column(Text, nullable=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    chunk_count = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+    # Relationships
+    workspace = relationship("WorkspaceRecord", back_populates="documents", lazy="selectin")
+    user = relationship("UserRecord", back_populates="documents", lazy="selectin")
+    chunks = relationship("DocumentChunk", back_populates="document", cascade="all, delete-orphan", lazy="selectin")
+
+    def __repr__(self) -> str:
+        return f"<DocumentRecord id={self.id} filename={self.filename}>"
 
 
-@dataclass
-class ChunkRecord:
-    """A single text chunk with metadata."""
+class DocumentChunk(Base):
+    """Stores text chunks extracted from documents for RAG."""
 
-    chunk_id: str
-    text: str
-    index: int
-    document_id: Optional[str] = None
+    __tablename__ = "document_chunks"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    document_id = Column(UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
+    chunk_index = Column(Integer, nullable=False)
+    content = Column(Text, nullable=False)
+    embedding = Column(Text, nullable=True)  # JSON-serialized list of floats
+    metadata_json = Column(Text, nullable=True)  # Arbitrary metadata as JSON
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    # Relationships
+    document = relationship("DocumentRecord", back_populates="chunks", lazy="selectin")
+
+    def __repr__(self) -> str:
+        return f"<DocumentChunk id={self.id} doc_id={self.document_id} index={self.chunk_index}>"
+
+
+class DocumentShare(Base):
+    """Tracks document sharing between users."""
+
+    __tablename__ = "document_shares"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    document_id = Column(UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
+    shared_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    shared_with_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    permission = Column(String(32), nullable=False, default="read")  # read, write, admin
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    document = relationship("DocumentRecord", lazy="selectin")
+    shared_by = relationship("UserRecord", foreign_keys=[shared_by_user_id], lazy="selectin")
+    shared_with = relationship("UserRecord", foreign_keys=[shared_with_user_id], lazy="selectin")
+
+
+__all__ = [
+    "DocumentRecord",
+    "DocumentChunk",
+    "DocumentShare",
+]
