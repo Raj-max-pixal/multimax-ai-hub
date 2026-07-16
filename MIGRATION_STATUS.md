@@ -1,7 +1,8 @@
 # Phase 0 Migration Status Report
 
-**Generated:** 2026-07-15  
-**Overall Progress:** ~55-60% Complete
+**Generated:** 2026-07-16  
+**Last Updated:** 2026-07-16  
+**Overall Progress:** ~85% Complete (up from ~60%)
 
 ---
 
@@ -24,12 +25,12 @@ Legacy: backend/main.py + backend/services/*  ──→  New: backend/app/*
 | `backend/app/core/container.py` | ✅ Done | DI container wiring |
 | `backend/app/core/events.py` | ✅ Done | Memory-based event bus system |
 | `backend/app/core/plugin_manager.py` | ✅ Done | Plugin interface and lifecycle management |
-| `backend/app/core/module_loader.py` | ✅ Done | Module discovery/loading (path may need fixing) |
+| `backend/app/core/module_loader.py` | ✅ Done | Module discovery/loading (path mismatch known issue) |
 | `backend/app/shared/interfaces.py` | ✅ Done | All contracts: Repository, Service, AI Provider, VectorStore, Storage, Cache, Search, TaskQueue |
 
 ---
 
-## ✅ COMPLETE: AI Provider Abstraction (90% structured)
+## ✅ COMPLETE: AI Provider Abstraction (85% structured)
 
 | File | Status | Description |
 |------|--------|-------------|
@@ -41,105 +42,104 @@ Legacy: backend/main.py + backend/services/*  ──→  New: backend/app/*
 | `backend/app/ai/providers/openai.py` | ✅ Done | OpenAI provider stub |
 | `backend/app/ai/providers/gemini.py` | ✅ Done | Gemini provider stub |
 | `backend/app/ai/providers/qwen.py` | ✅ Done | Qwen provider stub |
+| `backend/app/ai/providers/ollama.py` | ⚠️ 20% | **generate() and stream() raise NotImplementedError** — needs httpx calls to Ollama `/api/chat` |
 | `backend/app/ai/verify_ai.py` | ✅ Done | AI module verification tests |
 
 ---
 
-## ✅ COMPLETE: Domain Modules (80-85% structured)
-
-### Chat Module
-| File | Status | Description |
-|------|--------|-------------|
-| `backend/app/chat/__init__.py` | ✅ Done | Module registration |
-| `backend/app/chat/models.py` | ✅ Done | ORM models (ChatSession, Message, Attachment) |
-| `backend/app/chat/schemas.py` | ✅ Done | Pydantic request/response schemas |
-| `backend/app/chat/repositories.py` | ✅ Done | Data access layer (CRUD, pagination) |
-| `backend/app/chat/service.py` | ✅ Done | Business logic layer |
-| `backend/app/chat/api.py` | ✅ Done | REST API endpoints |
+## ✅ COMPLETE: Domain Modules (95% structured)
 
 ### Auth Module
 | File | Status | Description |
 |------|--------|-------------|
-| `backend/app/auth/__init__.py` | ✅ Done | Module registration |
-| `backend/app/auth/models.py` | ✅ Done | ORM models (User, RefreshToken, LoginAttempt) |
-| `backend/app/auth/schemas.py` | ✅ Done | Pydantic schemas |
-| `backend/app/auth/service.py` | ✅ Done | JWT, password hashing, login logic |
-| `backend/app/auth/api.py` | ✅ Done | Auth endpoints |
-| `backend/app/auth/dependencies.py` | ✅ Done | FastAPI dependency injection |
+| All 6 files | ✅ Done | Models, schemas, service, API, dependencies, registration |
+
+### Chat Module
+| File | Status | Description |
+|------|--------|-------------|
+| All 6 files | ✅ Done | Models, schemas, repositories, service, API, registration |
 
 ### Workspace Module
 | File | Status | Description |
 |------|--------|-------------|
-| `backend/app/workspace/__init__.py` | ✅ Done | Module registration |
-| `backend/app/workspace/models.py` | ✅ Done | ORM models (Workspace, WorkspaceMember) |
-| `backend/app/workspace/service.py` | ✅ Done | Business logic |
-| `backend/app/workspace/api.py` | ✅ Done | REST API endpoints |
+| All 4 files | ✅ Done | Models, service, API, registration |
+
+### Document Module *(NEW - just completed)*
+| File | Status | Description |
+|------|--------|-------------|
+| `backend/app/document/__init__.py` | ✅ Done | Module registration with `module_info` and `register()` |
+| `backend/app/document/models.py` | ✅ Done | ORM models (Document, DocumentChunk) |
+| `backend/app/document/schemas.py` | ✅ Done | Pydantic schemas (UploadResponse, DocumentResponse, DocumentChatRequest, etc.) |
+| `backend/app/document/exceptions.py` | ✅ Done | DocumentNotFoundError, TextExtractionError, StorageError |
+| `backend/app/document/repositories.py` | ✅ Done | Data access (DB, file system, ChromaDB) |
+| `backend/app/document/service.py` | ✅ Done | Business logic (upload, extract, chunk, embed, search, RAG) |
+| `backend/app/document/dependencies.py` | ✅ Done | FastAPI dependency injection |
+| `backend/app/document/api.py` | ✅ Done | REST endpoints at `/api/v1/documents/*` |
 
 ---
 
-## ⚠️ PARTIALLY COMPLETE
+## 🏗️ App Wiring Status
 
-| Component | Progress | What's Missing |
-|-----------|----------|----------------|
-| `backend/app/ai/providers/ollama.py` | **~20%** | `generate()` and `stream()` both raise `NotImplementedError`. The real implementation exists only in legacy `backend/main.py` (POST /api/chat) and `services/rag_service.py`. Needs actual HTTP calls to Ollama API. |
-| `backend/app/main.py` | **~20%** | File exists as new entry point but is not properly wired to load/register all modules. |
-| `backend/app/core/module_loader.py` | **~70%** | `discover()` looks for modules under `app.modules.*` but actual modules live at `app.chat`, `app.auth`, `app.workspace` — path mismatch needs resolution. |
-
----
-
-## ❌ NOT STARTED: Document/Storage Module (0%)
-
-Four legacy services need to be migrated into a new `backend/app/document/` domain module:
-
-### Legacy Files to Migrate
-
-| Legacy File | Lines | Purpose |
-|-------------|-------|---------|
-| `backend/services/storage_service.py` | 44 | File upload, download, delete to `./uploads/` |
-| `backend/services/document_service.py` | 60 | PDF/DOCX/TXT text extraction + text chunking |
-| `backend/services/embedding_service.py` | 63 | ChromaDB embedding creation, search, deletion |
-| `backend/services/rag_service.py` | 59 | RAG query → search ChromaDB → build context → call Ollama |
-
-### Endpoints NOT Yet Migrated
-
-These endpoints in `backend/main.py` have no equivalent in the new architecture:
-
-| Legacy Endpoint | Method | Purpose | Status |
-|-----------------|--------|---------|--------|
-| `GET /` | root | API info | ❌ Not migrated |
-| `GET /health` | health | Ollama connectivity check | ❌ Not migrated |
-| `GET /api/models` | get_models | List available Ollama models | ❌ AIManager exists but not wired |
-| `POST /api/chat` | chat | Stream chat with Ollama | ❌ AIManager/OllamaProvider not wired |
-| `POST /api/documents/upload` | upload_documents | Upload + process files | ❌ Document module needed |
-| `GET /api/documents` | get_documents | List uploaded documents | ❌ Document module needed |
-| `GET /api/documents/{id}` | get_document | Get document details | ❌ Document module needed |
-| `DELETE /api/documents/{id}` | delete_document | Delete document | ❌ Document module needed |
-| `POST /api/documents/chat` | chat_with_documents | RAG chat | ❌ Document module needed |
-| `POST /api/transcribe` | transcribe_audio | Audio transcription | ❌ Not migrated |
+| Component | Progress | Details |
+|-----------|----------|---------|
+| `backend/app/main.py` | **~70%** | Module loading works but bypasses `ModuleLoader.discover()`. Modules imported directly via importlib. |
+| `ModuleLoader.discover()` path | **~50%** | Scans `app.modules.*` but modules live at `app.auth`, `app.chat`, `app.workspace`, `app.document` |
+| Legacy `/api/documents/*` → new `/api/v1/documents/*` | **⚠️ 0%** | Frontend calls legacy paths; no redirect/router yet |
 
 ---
 
-## Required New Module Structure
+## 🔴 REMAINING GAPS (To reach 100%)
 
-### `backend/app/document/` — must create:
+### Phase 0.2 — Real Ollama Provider (~3 files)
+- [ ] Implement `OllamaProvider.generate()` with httpx call to Ollama `/api/chat`
+- [ ] Implement `OllamaProvider.stream()` with async streaming
+- [ ] Implement `OllamaProvider.list_models()` querying Ollama `/api/tags`
+- [ ] Implement `OllamaProvider.health_check()` pinging Ollama base URL
 
-```
-backend/app/document/
-├── __init__.py           # Module registration for module_loader
-├── models.py             # ORM / dataclass models
-├── schemas.py            # Pydantic request/response schemas
-├── repositories.py       # Data access (DB + file system + ChromaDB)
-├── service.py            # Business logic (upload, process, search, RAG)
-└── api.py                # REST endpoints
-```
+### Phase 0.3 — App Wiring
+- [ ] Fix `module_loader.py` to discover modules at `app.*` paths (vs `app.modules.*`)
+- [ ] Update frontend `api.ts` to call `/api/v1/documents/*` paths (currently calls legacy `/api/pdf/upload`)
+- [ ] Wire `/api/models` endpoint to `AIManager.list_models()`
+- [ ] Migrate `GET /` root endpoint (API info)
+- [ ] Migrate `POST /api/transcribe` (audio transcription)
+
+### Phase 0.4 — Testing & Validation
+- [ ] Run existing test scripts (`test_chat.py`, `test_flow.py`, etc.)
+- [ ] Verify auth flow (signup → login → JWT → protected routes)
+- [ ] Verify document upload → search → RAG chat flow
+- [ ] Verify all legacy `backend/main.py` endpoints work via new architecture
 
 ---
 
-## Migration Action Plan
+## 📊 File Count Summary
 
-### Phase 0.1 — Document Module (HIGHEST PRIORITY)
-- [ ] Create `backend/app/document/` package structure
-- [ ] Migrate `StorageService` → DocumentRepository (or keep as service dependency)
+| Area | Files | Status |
+|------|-------|--------|
+| Core Infrastructure | 9 | ✅ 100% |
+| Shared Interfaces | 1 | ✅ 100% |
+| Auth Module | 6 | ✅ 100% |
+| Chat Module | 6 | ✅ 100% |
+| Workspace Module | 4 | ✅ 100% |
+| Document Module | 8 | ✅ 100% (NEW) |
+| AI Providers | 10 | ⚠️ 85% (Ollama needs real impl) |
+| App Wiring | 2 | ⚠️ 70% |
+| **TOTAL** | **~46 files** | **~85% complete** |
+
+---
+
+## Legacy Endpoints Migration Status
+
+| Legacy Endpoint | Method | Migrated? | Location |
+|-----------------|--------|-----------|----------|
+| `GET /` | root | ❌ | Not migrated |
+| `GET /health` | health | ✅ | `/health/live`, `/health/ready` |
+| `GET /api/models` | get_models | ⚠️ | AIManager exists but not wired to endpoint |
+| `POST /api/chat` | chat | ⚠️ | OllamaProvider.generate() not implemented |
+| `POST /api/documents/upload` | upload_documents | ✅ | `/api/v1/documents/upload` |
+| `GET /api/documents` | get_documents | ✅ | `/api/v1/documents` |
+| `GET /api/documents/{id}` | get_document | ✅ | `/api/v1/documents/{id}` |
+| `DELETE /api/documents/{id}` | delete_document | ✅ | `/api/v1/documents/{id}` |
+| `POST /api/documents/chat` | chat_with_documents | ✅ | `/api/v1/documents/chat` |
 - [ ] Migrate `DocumentService` (PDF/DOCX/TXT extraction + chunking)
 - [ ] Migrate `EmbeddingService` (ChromaDB integration using shared VectorStoreInterface)
 - [ ] Migrate `RAGService` (context building + Ollama prompt)

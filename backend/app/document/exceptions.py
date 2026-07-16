@@ -71,6 +71,17 @@ class EmbeddingError(DocumentError):
         )
 
 
+class TextExtractionError(DocumentError):
+    """Raised when text extraction from a document fails."""
+
+    def __init__(self, filename: str, reason: str, details: dict | None = None) -> None:
+        super().__init__(
+            message=f"Text extraction failed for {filename}: {reason}",
+            code="TEXT_EXTRACTION_ERROR",
+            details=details or {"filename": filename},
+        )
+
+
 __all__ = [
     "DocumentError",
     "DocumentNotFoundError",
@@ -78,4 +89,5 @@ __all__ = [
     "DocumentProcessingError",
     "ChunkNotFoundError",
     "EmbeddingError",
+    "TextExtractionError",
 ]

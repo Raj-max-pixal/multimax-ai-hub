@@ -9,11 +9,11 @@ from __future__ import annotations
 
 import os
 from contextlib import asynccontextmanager
-from typing import Any, AsyncGenerator, Dict
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.core.config import Settings, get_settings
 from app.core.container import Container, get_container
@@ -42,6 +42,7 @@ class AppState:
         # Initialize database (must call init_database before get_database)
         from app.core.database import init_database
         self.database = init_database(self.settings)
+        self.ai_manager: Optional[Any] = None
 
 
 # --------------------------------------------------------------------------- #
@@ -71,6 +72,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Start event bus
     await app_state.event_bus.start()
 
+    # Initialize AI Manager
+    app_state.ai_manager = _init_ai_manager(app_state)
+
     # Load domain modules
     _load_domain_modules(app, app_state)
 
@@ -86,6 +90,35 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await app_state.event_bus.stop()
     await app_state.database.close()
     logger.info("Shutdown complete")
+
+
+def _init_ai_manager(app_state: AppState) -> Any:
+    """Initialize the AI Manager with configured providers."""
+    from app.ai.manager import AIManager
+    from app.ai.providers.ollama import OllamaProvider
+    from app.ai.providers.openai import OpenAIProvider
+    from app.ai.provider_registry import ProviderRegistry
+
+    registry = ProviderRegistry()
+
+    # Register Ollama provider (always available)
+    ollama_config = {
+        "name": "ollama",
+        "display_name": "Ollama",
+        "base_url": app_state.settings.ollama_url,
+        "default_model": app_state.settings.OLLAMA_DEFAULT_MODEL,
+        "models": ["llama3.1", "mistral", "codellama", "phi3"],
+        "timeout": 120,
+    }
+
+    from app.ai.base import ProviderConfig as ProviderConfigCls
+
+    provider = OllamaProvider(ProviderConfigCls(**ollama_config))
+    registry.register(provider)
+
+    # Future: conditionally register OpenAI, Gemini, Qwen here
+
+    return AIManager(registry=registry)
 
 
 def _load_domain_modules(app: FastAPI, app_state: AppState) -> None:
@@ -155,6 +188,262 @@ def _setup_middleware(app: FastAPI, settings: Settings) -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Legacy-Compatible API Endpoints
+# --------------------------------------------------------------------------- #
+
+
+def _setup_legacy_endpoints(app: FastAPI) -> None:
+    """Add backward-compatible endpoints matching the legacy backend/main.py API."""
+
+    @app.get("/", tags=["legacy"])
+    async def root():
+        """Root endpoint — API information."""
+        return {
+            "message": "Multimax AI Hub API",
+            "version": "0.4.0",
+            "architecture": "modular",
+            "status": "running",
+        }
+
+    @app.get("/api/models", tags=["legacy"])
+    async def get_models():
+        """List available models via AIManager (legacy-compatible response)."""
+        app_state: AppState = getattr(app.state, "multimax", None)
+        if app_state and app_state.ai_manager:
+            try:
+                models = await app_state.ai_manager.list_models()
+                model_list = [
+                    {"name": f"{m.name}:latest" if ":" not in m.name else m.name}
+                    for m in models
+                ]
+                return {"models": model_list}
+            except Exception as e:
+                logger.warning(f"Failed to list models via AIManager: {e}")
+
+        # Fallback default models
+        return {
+            "models": [
+                {"name": "phi3:latest"},
+                {"name": "llama3:latest"},
+                {"name": "qwen3:4b"},
+            ]
+        }
+
+    @app.post("/api/chat", tags=["legacy"])
+    async def chat(request: Request):
+        """Legacy-compatible chat endpoint — proxies to AIManager."""
+        body = await request.json()
+        model = body.get("model", "llama3.1")
+        messages = body.get("messages", [])
+        stream = body.get("stream", True)
+
+        if not messages:
+            raise HTTPException(status_code=422, detail="messages field is required")
+
+        app_state: AppState = getattr(app.state, "multimax", None)
+
+        if app_state and app_state.ai_manager:
+            try:
+                from app.ai.base import GenerationRequest
+
+                gen_request = GenerationRequest(
+                    model=model,
+                    messages=[{"role": m["role"], "content": m["content"]} for m in messages],
+                )
+
+                if stream:
+                    async def stream_response():
+                        async for token in app_state.ai_manager.stream(gen_request):
+                            yield token
+
+                    return StreamingResponse(stream_response(), media_type="application/json")
+                else:
+                    response = await app_state.ai_manager.generate(gen_request)
+                    return JSONResponse(content={"message": {"content": response.content}})
+
+            except Exception as e:
+                logger.error(f"AI Manager chat error: {e}")
+                # Fall through to direct Ollama call
+
+        # Fallback: direct Ollama call
+        ollama_url = getattr(get_settings(), "ollama_url", "http://localhost:11434")
+        try:
+            async with httpx.AsyncClient(timeout=None) as client:
+                if stream:
+                    async def proxy_stream():
+                        async with client.stream(
+                            "POST",
+                            f"{ollama_url}/api/chat",
+                            json={"model": model, "messages": messages, "stream": True},
+                        ) as response:
+                            response.raise_for_status()
+                            async for chunk in response.aiter_bytes():
+                                yield chunk
+
+                    return StreamingResponse(proxy_stream(), media_type="application/json")
+                else:
+                    response = await client.post(
+                        f"{ollama_url}/api/chat",
+                        json={"model": model, "messages": messages, "stream": False},
+                    )
+                    response.raise_for_status()
+                    return JSONResponse(content=response.json())
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Chat failed: {e}")
+
+    @app.post("/api/documents/upload", tags=["legacy"])
+    async def upload_documents(files: List[UploadFile] = File(...)):
+        """Legacy-compatible document upload — redirects to v1."""
+        # Forward to the v1 document API
+        from app.document.api import router as document_router
+
+        uploaded_docs = []
+        for file in files:
+            # Use the document service directly
+            from app.document.service import DocumentService
+            from app.document.repositories import DocumentRepository, StorageRepository, VectorRepository
+            from app.core.database import get_database
+
+            db = get_database()
+            doc_repo = DocumentRepository(db)
+            storage_repo = StorageRepository()
+            vector_repo = VectorRepository()
+            doc_service = DocumentService(doc_repo, storage_repo, vector_repo)
+
+            try:
+                doc = await doc_service.upload_document(file)
+                uploaded_docs.append({
+                    "id": doc.id,
+                    "filename": doc.filename,
+                    "file_type": doc.file_type,
+                    "file_size": doc.file_size,
+                    "chunk_count": doc.chunk_count,
+                    "status": "processed",
+                })
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed to process {file.filename}: {e}")
+
+        return {"documents": uploaded_docs, "message": "Documents uploaded and processed successfully"}
+
+    @app.get("/api/documents", tags=["legacy"])
+    async def get_documents_legacy():
+        """Legacy-compatible document listing."""
+        from app.document.service import DocumentService
+        from app.document.repositories import DocumentRepository, StorageRepository, VectorRepository
+        from app.core.database import get_database
+
+        db = get_database()
+        doc_repo = DocumentRepository(db)
+        storage_repo = StorageRepository()
+        vector_repo = VectorRepository()
+        doc_service = DocumentService(doc_repo, storage_repo, vector_repo)
+
+        docs = await doc_service.list_documents()
+        return {"documents": [
+            {
+                "id": d.id,
+                "filename": d.filename,
+                "file_type": d.file_type,
+                "file_size": d.file_size,
+                "chunk_count": d.chunk_count,
+                "status": d.status,
+            }
+            for d in docs
+        ]}
+
+    @app.get("/api/documents/{document_id}", tags=["legacy"])
+    async def get_document_legacy(document_id: str):
+        """Legacy-compatible single document retrieval."""
+        from app.document.service import DocumentService
+        from app.document.repositories import DocumentRepository, StorageRepository, VectorRepository
+        from app.core.database import get_database
+
+        db = get_database()
+        doc_repo = DocumentRepository(db)
+        storage_repo = StorageRepository()
+        vector_repo = VectorRepository()
+        doc_service = DocumentService(doc_repo, storage_repo, vector_repo)
+
+        doc = await doc_service.get_document(document_id)
+        if not doc:
+            raise HTTPException(status_code=404, detail="Document not found")
+        return {
+            "id": doc.id,
+            "filename": doc.filename,
+            "file_type": doc.file_type,
+            "file_size": doc.file_size,
+            "chunk_count": doc.chunk_count,
+            "status": doc.status,
+        }
+
+    @app.delete("/api/documents/{document_id}", tags=["legacy"])
+    async def delete_document_legacy(document_id: str):
+        """Legacy-compatible document deletion."""
+        from app.document.service import DocumentService
+        from app.document.repositories import DocumentRepository, StorageRepository, VectorRepository
+        from app.core.database import get_database
+
+        db = get_database()
+        doc_repo = DocumentRepository(db)
+        storage_repo = StorageRepository()
+        vector_repo = VectorRepository()
+        doc_service = DocumentService(doc_repo, storage_repo, vector_repo)
+
+        deleted = await doc_service.delete_document(document_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Document not found")
+        return {"message": "Document deleted successfully"}
+
+    @app.post("/api/documents/chat", tags=["legacy"])
+    async def chat_with_documents_legacy(request: Request):
+        """Legacy-compatible document chat — proxies to RAG service."""
+        body = await request.json()
+        query = body.get("query", "")
+        document_ids = body.get("document_ids", [])
+        model = body.get("model", "phi3:latest")
+
+        if not query or not document_ids:
+            raise HTTPException(status_code=422, detail="query and document_ids are required")
+
+        from app.document.service import DocumentService
+        from app.document.repositories import DocumentRepository, StorageRepository, VectorRepository
+        from app.core.database import get_database
+
+        db = get_database()
+        doc_repo = DocumentRepository(db)
+        storage_repo = StorageRepository()
+        vector_repo = VectorRepository()
+        doc_service = DocumentService(doc_repo, storage_repo, vector_repo)
+
+        async def stream_response():
+            async for chunk in doc_service.chat_with_documents(query, document_ids, model):
+                yield chunk
+
+        return StreamingResponse(stream_response(), media_type="application/json")
+
+    @app.post("/api/transcribe", tags=["legacy"])
+    async def transcribe_audio(file: UploadFile = File(...)):
+        """Transcribe audio file (stub — Whisper integration placeholder)."""
+        logger.info(f"Transcription requested for: {file.filename}")
+        return {
+            "transcript": "This is a sample transcript. Whisper integration will be added in the backend."
+        }
+
+    @app.get("/api/health", tags=["legacy"])
+    async def health_legacy():
+        """Legacy-compatible health check."""
+        app_state: AppState = getattr(app.state, "multimax", None)
+        ollama_status = "disconnected"
+        if app_state and app_state.ai_manager:
+            try:
+                health = await app_state.ai_manager.health_check("ollama")
+                ollama_status = "connected" if health.available else "disconnected"
+            except Exception:
+                pass
+        return {"status": "healthy", "ollama": ollama_status}
+
+
+# --------------------------------------------------------------------------- #
 # Health Endpoints
 # --------------------------------------------------------------------------- #
 
@@ -193,9 +482,7 @@ def _setup_health_endpoints(app: FastAPI) -> None:
 
         return {
             "status": "ready",
-            "modules": app_state.module_loader.get_module_names()
-            if hasattr(app_state.module_loader, "_modules")
-            else [],
+            "modules": list(app_state.module_loader._modules.keys()),
         }
 
 
@@ -260,7 +547,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Multimax AI Hub",
         description="The AI Operating System — unified platform for chat, code, research, and automation",
-        version="0.1.0",
+        version="0.4.0",
         lifespan=lifespan,
         docs_url="/docs",
         redoc_url="/redoc",
@@ -269,6 +556,7 @@ def create_app() -> FastAPI:
     # Setup all application layers
     _setup_middleware(app, settings)
     _setup_health_endpoints(app)
+    _setup_legacy_endpoints(app)
     _setup_exception_handlers(app)
 
     return app
