@@ -123,7 +123,7 @@ def _init_ai_manager(app_state: AppState) -> Any:
 
 def _load_domain_modules(app: FastAPI, app_state: AppState) -> None:
     """Import and register all domain modules."""
-    domain_module_packages = ["app.auth", "app.workspace", "app.chat", "app.document"]
+    domain_module_packages = ["app.auth", "app.workspace", "app.chat", "app.document", "app.settings"]
 
     for package_name in domain_module_packages:
         try:
