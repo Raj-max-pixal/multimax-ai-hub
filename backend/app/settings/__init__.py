@@ -9,23 +9,31 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
 
 from app.auth.dependencies import get_current_user
 from app.core.container import Container
 from app.core.database import get_database
+from app.core.module_loader import ModuleInfo
 
 logger = logging.getLogger("app.settings")
 
-module_info = type("ModuleInfo", (), {"name": "settings"})
+module_info = ModuleInfo(
+    name="settings",
+    package="app.settings",
+    description="System-wide and user-specific settings management",
+    version="0.1.0",
+    dependencies=["core"],
+    enabled=True,
+)
 
 PACKAGE_NAME = __name__
 API_PREFIX = "/api/v1/settings"
 
 
-def register(app: FastAPI, container: Container) -> None:
+def register(app: Any, container: Any) -> None:
     """Register settings module routes."""
     router = APIRouter(prefix=API_PREFIX, tags=["settings"])
 
