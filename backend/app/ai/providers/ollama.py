@@ -55,10 +55,13 @@ class OllamaProvider(BaseProvider):
         """Build the JSON payload for Ollama's /api/chat endpoint."""
         messages: List[Dict[str, str]] = []
 
-        if request.system_prompt:
-            messages.append({"role": "system", "content": request.system_prompt})
+        if request.system_prompt and request.system_prompt.strip():
+            messages.append({"role": "system", "content": request.system_prompt.strip()})
 
-        messages.extend(request.messages)
+        messages.extend(
+            message for message in request.messages
+            if str(message.get("content", "")).strip()
+        )
 
         data: Dict[str, Any] = {
             "model": request.model,

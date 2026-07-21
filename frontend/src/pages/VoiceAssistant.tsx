@@ -64,7 +64,7 @@ export default function VoiceAssistant() {
     if (!text.trim()) return addToast('Add transcript text first', 'error')
     setIsProcessing(true)
     try {
-      const data = await voiceChat({ transcript: text, model })
+      const data = await voiceChat({ transcript: text.trim(), model })
       setAnswer(data.answer || '')
       speak(data.answer || '')
     } catch (error: any) {

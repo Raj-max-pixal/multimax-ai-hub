@@ -40,7 +40,7 @@ export default function Agents() {
     if (!goal.trim()) return addToast('Enter an agent goal first', 'error')
     setIsLoading(true)
     try {
-      const data = await runAgent({ goal, agent_type: agentType, model, max_steps: maxSteps })
+      const data = await runAgent({ goal: goal.trim(), agent_type: agentType, model, max_steps: maxSteps })
       setResult(data.steps || '')
       await loadRuns()
     } catch (error: any) {

@@ -26,7 +26,7 @@ import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { motion, AnimatePresence } from 'framer-motion'
-import { chatWithOllama, getOllamaModels, uploadDocument } from '../lib/api'
+import { chatWithOllama, filterEmptyChatMessages, getOllamaModels, uploadDocument } from '../lib/api'
 import { useToast } from '../contexts/ToastContext'
 import { cn } from '../lib/utils'
 import type { Message, Conversation, ChatAttachment } from '../types'
@@ -378,11 +378,11 @@ export default function AIChat() {
       
       // Get the latest input (userMessage was already created above and captures the value before setInput(''))
       const attachmentContext = userMessage.attachments?.length ? '\n\nAttached files:\n' + userMessage.attachments.map(file => '- ' + file.name + ' (' + file.type + ', ' + formatFileSize(file.size) + ')' + (file.documentId ? ', document id: ' + file.documentId : '')).join('\n') : ''
-      const messages = [
+      const messages = filterEmptyChatMessages([
         { role: 'system' as const, content: selectedPersona.systemPrompt },
         ...conversationMessages,
         { role: 'user' as const, content: userMessage.content + attachmentContext }
-      ]
+      ])
       
       console.log('Sending request to backend:', { model: selectedModel, messagesCount: messages.length })
       console.log('Full request payload:', JSON.stringify({ model: selectedModel, messages }))

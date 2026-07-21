@@ -40,7 +40,7 @@ documents_db = []
 
 class ChatMessage(BaseModel):
     role: Literal["user", "assistant", "system"]
-    content: str = Field(..., min_length=1)
+    content: str = ""
 
 class ChatRequest(BaseModel):
     model: str = Field(..., min_length=1)
@@ -83,7 +83,11 @@ async def get_models():
 @app.post("/api/chat")
 async def chat(request: ChatRequest):
     try:
-        logger.info(f"Chat request received for model {request.model} with {len(request.messages)} messages")
+        valid_messages = [m for m in request.messages if m.content and m.content.strip()]
+        if not valid_messages:
+            raise HTTPException(status_code=422, detail="At least one non-empty message is required")
+
+        logger.info(f"Chat request received for model {request.model} with {len(valid_messages)} messages")
         
         async def generate():
             async with httpx.AsyncClient(timeout=None) as client:
@@ -92,7 +96,7 @@ async def chat(request: ChatRequest):
                     f"{OLLAMA_URL}/api/chat",
                     json={
                         "model": request.model,
-                        "messages": [{"role": m.role, "content": m.content} for m in request.messages],
+                        "messages": [{"role": m.role, "content": m.content} for m in valid_messages],
                         "stream": True
                     }
                 ) as response:

@@ -234,11 +234,14 @@ def _setup_legacy_endpoints(app: FastAPI) -> None:
         """Legacy-compatible chat endpoint — proxies to AIManager."""
         body = await request.json()
         model = body.get("model", "llama3.1")
-        messages = body.get("messages", [])
+        messages = [
+            message for message in body.get("messages", [])
+            if isinstance(message, dict) and str(message.get("content", "")).strip()
+        ]
         stream = body.get("stream", True)
 
         if not messages:
-            raise HTTPException(status_code=422, detail="messages field is required")
+            raise HTTPException(status_code=422, detail="At least one non-empty message is required")
 
         app_state: AppState = getattr(app.state, "multimax", None)
 

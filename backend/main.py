@@ -49,7 +49,7 @@ documents_db = []
 
 class ChatMessage(BaseModel):
     role: Literal["user", "assistant", "system"]
-    content: str = Field(..., min_length=1)
+    content: str = ""
     images: Optional[List[str]] = None
 
 class ChatRequest(BaseModel):
@@ -271,7 +271,11 @@ async def get_models():
 @app.post("/api/chat")
 async def chat(request: ChatRequest):
     try:
-        logger.info(f"Chat request received for model {request.model} with {len(request.messages)} messages")
+        valid_messages = [m for m in request.messages if m.content and m.content.strip()]
+        if not valid_messages:
+            raise HTTPException(status_code=422, detail="At least one non-empty message is required")
+
+        logger.info(f"Chat request received for model {request.model} with {len(valid_messages)} messages")
         
         async def generate():
             async with httpx.AsyncClient(timeout=None) as client:
@@ -285,7 +289,7 @@ async def chat(request: ChatRequest):
                                 **{"role": m.role, "content": m.content},
                                 **({"images": m.images} if m.images else {}),
                             }
-                            for m in request.messages
+                            for m in valid_messages
                         ],
                         "stream": True
                     }
