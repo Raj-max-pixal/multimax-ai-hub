@@ -18,7 +18,7 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { useToast } from '../contexts/ToastContext'
 import { cn } from '../lib/utils'
 
-const API_BASE = 'http://localhost:8000/api'
+const API_BASE = '/api'
 
 interface Document {
   id: string
@@ -274,7 +274,7 @@ export default function PDFChat() {
               {isDragging ? "Drop files here" : "Click or drag to upload"}
             </p>
             <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
-              PDF, TXT, MD, DOCX • Max 10MB
+              PDF, TXT, MD, DOCX â€¢ Max 10MB
             </p>
           </div>
         </div>
@@ -303,7 +303,7 @@ export default function PDFChat() {
                   {doc.filename}
                 </p>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  {formatFileSize(doc.file_size)} • {doc.chunk_count} chunks
+                  {formatFileSize(doc.file_size)} â€¢ {doc.chunk_count} chunks
                 </p>
               </div>
               <div className="flex items-center gap-1">

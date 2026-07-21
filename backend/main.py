@@ -86,6 +86,21 @@ class AutomationCreateRequest(BaseModel):
     trigger: str = Field(..., min_length=1)
     actions: List[str] = Field(..., min_length=1)
     enabled: bool = True
+
+class ImageGenerateRequest(BaseModel):
+    prompt: str = Field(..., min_length=1)
+    style: Literal["realistic", "illustration", "logo", "poster", "thumbnail"] = "illustration"
+    size: Literal["square", "wide", "portrait"] = "square"
+
+class VideoGenerateRequest(BaseModel):
+    prompt: str = Field(..., min_length=1)
+    style: Literal["shorts", "explainer", "ad", "tutorial", "story"] = "shorts"
+    duration_seconds: int = Field(30, ge=5, le=180)
+    model: Optional[str] = "qwen3:4b"
+
+class VoiceChatRequest(BaseModel):
+    transcript: str = Field(..., min_length=1)
+    model: Optional[str] = "qwen3:4b"
 class DocumentChatRequest(BaseModel):
     query: str = Field(..., min_length=1)
     document_ids: List[str] = Field(..., min_length=1)
@@ -166,6 +181,32 @@ async def _search_web(query: str, max_sources: int) -> List[ResearchSource]:
             snippet="The research endpoint could not reach the web search provider. The AI summary will use the query only.",
         )
     ]
+
+def _svg_data_url(prompt: str, style: str, size: str) -> str:
+    import base64
+    import html as html_lib
+    dimensions = {"square": (1024, 1024), "wide": (1280, 720), "portrait": (720, 1280)}
+    width, height = dimensions.get(size, (1024, 1024))
+    safe_prompt = html_lib.escape(prompt[:180])
+    safe_style = html_lib.escape(style)
+    palette = {
+        "realistic": ("#111827", "#2563eb", "#22c55e"),
+        "illustration": ("#0f172a", "#8b5cf6", "#06b6d4"),
+        "logo": ("#052e16", "#22c55e", "#facc15"),
+        "poster": ("#1e1b4b", "#ec4899", "#f97316"),
+        "thumbnail": ("#020617", "#ef4444", "#3b82f6"),
+    }.get(style, ("#0f172a", "#22c55e", "#06b6d4"))
+    svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">
+  <defs><linearGradient id="g" x1="0" x2="1" y1="0" y2="1"><stop stop-color="{palette[0]}"/><stop offset="0.55" stop-color="{palette[1]}"/><stop offset="1" stop-color="{palette[2]}"/></linearGradient><filter id="blur"><feGaussianBlur stdDeviation="50"/></filter></defs>
+  <rect width="100%" height="100%" fill="url(#g)"/>
+  <circle cx="{width * 0.25}" cy="{height * 0.28}" r="{min(width, height) * 0.22}" fill="white" opacity="0.18" filter="url(#blur)"/>
+  <circle cx="{width * 0.78}" cy="{height * 0.72}" r="{min(width, height) * 0.26}" fill="black" opacity="0.22" filter="url(#blur)"/>
+  <rect x="{width * 0.08}" y="{height * 0.12}" width="{width * 0.84}" height="{height * 0.76}" rx="42" fill="rgba(255,255,255,0.12)" stroke="rgba(255,255,255,0.35)"/>
+  <text x="50%" y="42%" text-anchor="middle" font-family="Arial, sans-serif" font-size="{max(34, width // 24)}" font-weight="800" fill="white">Multimax Studio</text>
+  <text x="50%" y="51%" text-anchor="middle" font-family="Arial, sans-serif" font-size="{max(22, width // 42)}" fill="white" opacity="0.9">{safe_style}</text>
+  <foreignObject x="{width * 0.14}" y="{height * 0.58}" width="{width * 0.72}" height="{height * 0.22}"><div xmlns="http://www.w3.org/1999/xhtml" style="font-family:Arial,sans-serif;color:white;font-size:{max(20, width // 46)}px;text-align:center;line-height:1.35">{safe_prompt}</div></foreignObject>
+</svg>'''
+    return "data:image/svg+xml;base64," + base64.b64encode(svg.encode("utf-8")).decode("ascii")
 @app.get("/")
 async def root():
     return {"message": "Multimax AI Hub API", "version": "0.3.0"}
@@ -389,6 +430,41 @@ async def generate_workflow(request: ResearchRequest):
         return {"summary": summary}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Workflow generation failed: {e}")
+
+@app.post("/api/voice/chat")
+async def voice_chat(request: VoiceChatRequest):
+    try:
+        answer = await _ollama_complete(
+            request.model or "qwen3:4b",
+            request.transcript,
+            "You are Multimax Voice Assistant. Reply naturally and concisely for spoken playback.",
+        )
+        return {"transcript": request.transcript, "answer": answer, "voice": "browser-speech-synthesis"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Voice chat failed: {e}")
+
+@app.post("/api/images/generate")
+async def generate_image(request: ImageGenerateRequest):
+    image_url = _svg_data_url(request.prompt, request.style, request.size)
+    return {"prompt": request.prompt, "style": request.style, "size": request.size, "image_url": image_url, "note": "Local SVG image generated. Connect ComfyUI/Stable Diffusion later for photoreal generation."}
+
+@app.post("/api/video/generate")
+async def generate_video(request: VideoGenerateRequest):
+    try:
+        prompt = (
+            f"Create a video production plan.\nPrompt: {request.prompt}\n"
+            f"Style: {request.style}\nDuration: {request.duration_seconds} seconds\n\n"
+            "Return: title, hook, scene-by-scene storyboard with timestamps, narration, visual prompts, subtitles, music/SFX, and export checklist."
+        )
+        plan = await _ollama_complete(
+            request.model or "qwen3:4b",
+            prompt,
+            "You are Multimax Video Studio. Create practical video storyboards and generation prompts.",
+        )
+        frames = [_svg_data_url(f"{request.prompt} — scene {i + 1}", "thumbnail", "wide") for i in range(min(4, max(1, request.duration_seconds // 15)))]
+        return {"prompt": request.prompt, "style": request.style, "duration_seconds": request.duration_seconds, "plan": plan, "frames": frames}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Video generation failed: {e}")
 # === Document APIs ===
 
 @app.post("/api/documents/upload")

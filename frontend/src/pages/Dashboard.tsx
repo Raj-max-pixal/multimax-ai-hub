@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { MessageSquare, FileText, Mic, Sparkles, Code2, Globe2, Bot, Brain, Workflow } from 'lucide-react'
+import { MessageSquare, FileText, Mic, Sparkles, Code2, Globe2, Bot, Brain, Workflow, Image, Film } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 const features = [
@@ -58,6 +58,22 @@ const features = [
     path: '/pdf',
     gradient: 'from-purple-500 to-purple-600',
     bgGradient: 'from-purple-500/10 to-purple-600/10'
+  },
+  {
+    title: 'Image Studio',
+    description: 'Generate logos, posters, thumbnails, and concept art',
+    icon: Image,
+    path: '/image',
+    gradient: 'from-violet-500 to-violet-600',
+    bgGradient: 'from-violet-500/10 to-violet-600/10'
+  },
+  {
+    title: 'Video Studio',
+    description: 'Create storyboards, scenes, narration, and subtitles',
+    icon: Film,
+    path: '/video',
+    gradient: 'from-rose-500 to-rose-600',
+    bgGradient: 'from-rose-500/10 to-rose-600/10'
   },
   {
     title: 'Voice Assistant',

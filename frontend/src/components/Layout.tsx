@@ -18,7 +18,9 @@ import {
   Globe2,
   Bot,
   Brain,
-  Workflow
+  Workflow,
+  Image,
+  Film
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
@@ -34,6 +36,8 @@ const navItems = [
   { path: '/automation', label: 'Automation', icon: Workflow },
   { path: '/pdf', label: 'PDF Chat', icon: FileText },
   { path: '/voice', label: 'Voice Assistant', icon: Mic },
+  { path: '/image', label: 'Image Studio', icon: Image },
+  { path: '/video', label: 'Video Studio', icon: Film },
 ]
 
 export default function Layout({ children }: { children: React.ReactNode }) {

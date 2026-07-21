@@ -9,6 +9,8 @@ import Memory from './pages/Memory'
 import Automation from './pages/Automation'
 import PDFChat from './pages/PDFChat'
 import VoiceAssistant from './pages/VoiceAssistant'
+import AIImage from './pages/AIImage'
+import VideoStudio from './pages/VideoStudio'
 import Settings from './pages/Settings'
 import Login from './pages/Login'
 import Signup from './pages/Signup'
@@ -53,6 +55,8 @@ function App() {
                 <Route path="/memory" element={<Memory />} />
                 <Route path="/automation" element={<Automation />} />
                 <Route path="/voice" element={<VoiceAssistant />} />
+                <Route path="/image" element={<AIImage />} />
+                <Route path="/video" element={<VideoStudio />} />
                 <Route path="/profile" element={<Profile />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
