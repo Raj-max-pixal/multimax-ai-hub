@@ -24,7 +24,7 @@ from app.document.exceptions import (
     DocumentUploadError,
     EmbeddingError,
 )
-from app.document.models import DocumentChunk, DocumentRecord
+from app.document.models import DocumentChunk, Document as DocumentRecord
 from app.document.repositories import DocumentChunkRepository, DocumentRepository
 from app.document.schemas import (
     ChunkData,

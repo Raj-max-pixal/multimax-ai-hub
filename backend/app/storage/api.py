@@ -94,13 +94,14 @@ async def download_file(
     )
 
 
-@router.delete("/files/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/files/{file_id}")
 async def delete_file(
     file_id: str,
     storage: StorageService = Depends(get_storage_service),
-) -> None:
+) -> dict[str, str]:
     """Delete a file and its record."""
     await storage.delete_file(file_id)
+    return {"message": "File deleted successfully"}
 
 
 @router.get("/info", response_model=StorageInfoResponse)

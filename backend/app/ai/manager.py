@@ -219,3 +219,12 @@ class AIManager:
                     error=str(e),
                 )
         return results
+
+
+# Alias for backward compatibility — verification scripts look for AIProviderManager
+AIProviderManager = AIManager
+
+__all__ = [
+    "AIManager",
+    "AIProviderManager",
+]

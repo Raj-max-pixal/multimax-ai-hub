@@ -16,13 +16,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.logger import get_logger
-from app.storage.exceptions import FileNotFoundError_, QuotaExceededError, StorageError
+from app.storage.exceptions import FileNotFoundError_, StorageError, StorageQuotaExceededError
 from app.storage.models import StoredFile
 from app.storage.repositories import StoredFileRepository, StorageQuotaRepository
 
 logger = get_logger("storage.service")
 
-UPLOAD_DIR = get_settings().upload_dir or "uploads"
+UPLOAD_DIR = get_settings().UPLOAD_DIR or "uploads"
 
 
 class StorageService:
@@ -194,12 +194,10 @@ class StorageService:
         """Raise QuotaExceededError if adding bytes would exceed the limit."""
         quota = await self.quota_repo.get_or_create_quota(scope, scope_id)
         if quota.used_bytes + additional_bytes > quota.max_bytes:
-            raise QuotaExceededError(
-                scope=scope,
-                scope_id=scope_id,
-                used=quota.used_bytes,
-                limit=quota.max_bytes,
-                requested=additional_bytes,
+            raise StorageQuotaExceededError(
+                path=scope,
+                current_bytes=quota.used_bytes,
+                max_bytes=quota.max_bytes,
             )
 
 

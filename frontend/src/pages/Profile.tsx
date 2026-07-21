@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { User, Mail, Shield, Calendar } from 'lucide-react'
+import { User, Mail, Shield } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import { useForm } from 'react-hook-form'

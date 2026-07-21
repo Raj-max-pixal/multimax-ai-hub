@@ -13,7 +13,12 @@ import {
   Sun,
   Menu,
   ChevronRight,
-  Search
+  Search,
+  Code2,
+  Globe2,
+  Bot,
+  Brain,
+  Workflow
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
@@ -22,6 +27,11 @@ import { cn } from '../lib/utils'
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/chat', label: 'AI Chat', icon: MessageSquare },
+  { path: '/coding', label: 'AI Coding', icon: Code2 },
+  { path: '/research', label: 'Research', icon: Globe2 },
+  { path: '/agents', label: 'Agents', icon: Bot },
+  { path: '/memory', label: 'Memory', icon: Brain },
+  { path: '/automation', label: 'Automation', icon: Workflow },
   { path: '/pdf', label: 'PDF Chat', icon: FileText },
   { path: '/voice', label: 'Voice Assistant', icon: Mic },
 ]

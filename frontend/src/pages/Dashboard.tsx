@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { MessageSquare, FileText, Mic, Sparkles } from 'lucide-react'
+import { MessageSquare, FileText, Mic, Sparkles, Code2, Globe2, Bot, Brain, Workflow } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 const features = [
@@ -10,6 +10,46 @@ const features = [
     path: '/chat',
     gradient: 'from-blue-500 to-blue-600',
     bgGradient: 'from-blue-500/10 to-blue-600/10'
+  },
+  {
+    title: 'AI Coding',
+    description: 'Generate, fix, explain, test, and review code',
+    icon: Code2,
+    path: '/coding',
+    gradient: 'from-emerald-500 to-emerald-600',
+    bgGradient: 'from-emerald-500/10 to-emerald-600/10'
+  },
+  {
+    title: 'Research Engine',
+    description: 'Search the web, cite sources, and create reports',
+    icon: Globe2,
+    path: '/research',
+    gradient: 'from-cyan-500 to-cyan-600',
+    bgGradient: 'from-cyan-500/10 to-cyan-600/10'
+  },
+  {
+    title: 'AI Agents',
+    description: 'Plan multi-step tasks with role-based agents',
+    icon: Bot,
+    path: '/agents',
+    gradient: 'from-fuchsia-500 to-fuchsia-600',
+    bgGradient: 'from-fuchsia-500/10 to-fuchsia-600/10'
+  },
+  {
+    title: 'Memory',
+    description: 'Store preferences, project facts, and knowledge',
+    icon: Brain,
+    path: '/memory',
+    gradient: 'from-pink-500 to-pink-600',
+    bgGradient: 'from-pink-500/10 to-pink-600/10'
+  },
+  {
+    title: 'Automation',
+    description: 'Build and generate AI workflow automations',
+    icon: Workflow,
+    path: '/automation',
+    gradient: 'from-amber-500 to-amber-600',
+    bgGradient: 'from-amber-500/10 to-amber-600/10'
   },
   {
     title: 'PDF Chat',

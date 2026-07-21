@@ -14,17 +14,61 @@ import {
   Edit,
   Pin,
   UploadCloud,
-  Sparkles
+  Sparkles,
+  Download,
+  Share2,
+  Library,
+  FileText,
+  X
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { motion, AnimatePresence } from 'framer-motion'
-import { chatWithOllama, getOllamaModels } from '../lib/api'
+import { chatWithOllama, getOllamaModels, uploadDocument } from '../lib/api'
 import { useToast } from '../contexts/ToastContext'
 import { cn } from '../lib/utils'
-import type { Message, Conversation } from '../types'
+import type { Message, Conversation, ChatAttachment } from '../types'
+
+type Persona = {
+  id: string
+  name: string
+  systemPrompt: string
+}
+
+const PERSONAS: Persona[] = [
+  { id: 'general', name: 'General', systemPrompt: 'You are Multimax AI Hub, a helpful, practical AI assistant.' },
+  { id: 'coder', name: 'Coder', systemPrompt: 'You are a senior coding assistant. Be precise, explain tradeoffs, and provide production-ready code.' },
+  { id: 'researcher', name: 'Researcher', systemPrompt: 'You are a rigorous research assistant. Structure answers, compare evidence, and call out uncertainty.' },
+  { id: 'teacher', name: 'Teacher', systemPrompt: 'You are a patient study coach. Explain simply, use examples, and create short checks for understanding.' }
+]
+
+const PROMPT_LIBRARY = [
+  { title: 'Summarize', prompt: 'Summarize this clearly, then list key action items:\n\n' },
+  { title: 'Review code', prompt: 'Review this code for bugs, security, performance, and readability. Suggest exact fixes:\n\n' },
+  { title: 'Explain simply', prompt: 'Explain this step by step with a simple example:\n\n' },
+  { title: 'Research plan', prompt: 'Create a research plan with questions, search terms, and report outline for:\n\n' }
+]
+
+function formatFileSize(size: number) {
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function fileToDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(file)
+  })
+}
+
+function dataUrlToBase64(dataUrl: string) {
+  return dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl
+}
 
 export default function AIChat() {
   const [conversations, setConversations] = useState<Conversation[]>(() => {
@@ -45,13 +89,20 @@ export default function AIChat() {
   const [selectedModel, setSelectedModel] = useState('phi3:latest')
   const [showModels, setShowModels] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [folderFilter, setFolderFilter] = useState('All')
+  const [selectedPersonaId, setSelectedPersonaId] = useState('general')
+  const [showPrompts, setShowPrompts] = useState(false)
+  const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([])
   const [abortController, setAbortController] = useState<AbortController | null>(null)
   const [isRenaming, setIsRenaming] = useState<string | null>(null)
   const [renameInput, setRenameInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const { addToast } = useToast()
 
   const currentConversation = conversations.find(c => c.id === currentConversationId)
+  const selectedPersona = PERSONAS.find(p => p.id === selectedPersonaId) || PERSONAS[0]
+  const folders = ['All', ...Array.from(new Set(conversations.map(c => c.folder || 'General')))]
 
   useEffect(() => {
     localStorage.setItem('multimax_conversations', JSON.stringify(conversations))
@@ -80,12 +131,14 @@ export default function AIChat() {
       messages: [],
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      pinned: false
+      pinned: false,
+      folder: folderFilter === 'All' ? 'General' : folderFilter,
+      personaId: selectedPersonaId
     }
     setConversations(prev => [newConversation, ...prev])
     setCurrentConversationId(newConversation.id)
     return newConversation.id
-  }, [])
+  }, [folderFilter, selectedPersonaId])
 
   const deleteConversation = useCallback((id: string) => {
     setConversations(prev => prev.filter(c => c.id !== id))
@@ -171,6 +224,74 @@ export default function AIChat() {
     addToast('Copied to clipboard!', 'success')
   }
 
+  const exportChat = (format: 'markdown' | 'json') => {
+    if (!currentConversation) return
+    const body = format === 'json'
+      ? JSON.stringify(currentConversation, null, 2)
+      : [`# ${currentConversation.title}`, '', `Model: ${selectedModel}`, `Persona: ${selectedPersona.name}`, '', ...currentConversation.messages.map(m => `## ${m.role}\n\n${m.content}\n`)].join('\n')
+    const blob = new Blob([body], { type: format === 'json' ? 'application/json' : 'text/markdown' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${currentConversation.title.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.${format === 'json' ? 'json' : 'md'}`
+    a.click()
+    URL.revokeObjectURL(url)
+    addToast('Chat exported', 'success')
+  }
+
+  const shareChat = async () => {
+    if (!currentConversation) return
+    const shareId = currentConversation.shareId || `share_${Date.now().toString(36)}`
+    setConversations(prev => prev.map(c => c.id === currentConversation.id ? { ...c, shared: true, shareId } : c))
+    await navigator.clipboard.writeText(`${window.location.origin}${window.location.pathname}?shared=${shareId}`)
+    addToast('Share link copied', 'success')
+  }
+
+  const updateConversationFolder = (id: string, folder: string) => {
+    setConversations(prev => prev.map(c => c.id === id ? { ...c, folder: folder.trim() || 'General' } : c))
+  }
+
+  const handleFilesSelected = async (files: FileList | null) => {
+    if (!files?.length) return
+    const attachments: ChatAttachment[] = []
+    for (const file of Array.from(files)) {
+      const attachment: ChatAttachment = {
+        id: `${Date.now()}_${file.name}`,
+        name: file.name,
+        type: file.type || 'application/octet-stream',
+        size: file.size,
+        status: 'ready'
+      }
+      if (file.type.startsWith('image/')) {
+        try {
+          const dataUrl = await fileToDataUrl(file)
+          attachment.previewUrl = dataUrl
+          attachment.base64 = dataUrlToBase64(dataUrl)
+          attachment.status = 'ready'
+        } catch (error: any) {
+          attachment.status = 'error'
+          addToast(error.message || `Failed to read ${file.name}`, 'error')
+        }
+      } else if (file.type === 'application/pdf') {
+        try {
+          const result = await uploadDocument(file)
+          attachment.status = 'uploaded'
+          attachment.documentId = result.documents?.[0]?.id
+        } catch (error: any) {
+          attachment.status = 'error'
+          addToast(error.message || `Failed to upload ${file.name}`, 'error')
+        }
+      }
+      attachments.push(attachment)
+    }
+    setPendingAttachments(prev => [...prev, ...attachments])
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  const removePendingAttachment = (id: string) => {
+    setPendingAttachments(prev => prev.filter(file => file.id !== id))
+  }
+
   const regenerateResponse = async () => {
     if (!currentConversation || currentConversation.messages.length < 1) return
     const lastUserMessage = [...currentConversation.messages].reverse().find(m => m.role === 'user')
@@ -188,7 +309,7 @@ export default function AIChat() {
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault()
-    if (!input.trim() || isLoading) return
+    if ((!input.trim() && pendingAttachments.length === 0) || isLoading) return
 
     // Ensure we have a conversation BEFORE proceeding
     let activeConversationId = currentConversationId
@@ -200,7 +321,9 @@ export default function AIChat() {
         messages: [],
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-        pinned: false
+        pinned: false,
+        folder: folderFilter === 'All' ? 'General' : folderFilter,
+        personaId: selectedPersonaId
       }
       setConversations(prev => [newConversation, ...prev])
       setCurrentConversationId(newId)
@@ -211,8 +334,9 @@ export default function AIChat() {
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: input.trim(),
-      timestamp: new Date().toISOString()
+      content: input.trim() || 'Please analyze the attached file(s).',
+      timestamp: new Date().toISOString(),
+      attachments: pendingAttachments
     }
     const assistantMessage: Message = {
       id: (Date.now() + 1).toString(),
@@ -240,6 +364,7 @@ export default function AIChat() {
     })
 
     setInput('')
+    setPendingAttachments([])
     setIsLoading(true)
     setIsStreaming(true)
     const controller = new AbortController()
@@ -252,9 +377,11 @@ export default function AIChat() {
       const conversationMessages = activeConv?.messages || []
       
       // Get the latest input (userMessage was already created above and captures the value before setInput(''))
+      const attachmentContext = userMessage.attachments?.length ? '\n\nAttached files:\n' + userMessage.attachments.map(file => '- ' + file.name + ' (' + file.type + ', ' + formatFileSize(file.size) + ')' + (file.documentId ? ', document id: ' + file.documentId : '')).join('\n') : ''
       const messages = [
+        { role: 'system' as const, content: selectedPersona.systemPrompt },
         ...conversationMessages,
-        { role: 'user' as const, content: userMessage.content }
+        { role: 'user' as const, content: userMessage.content + attachmentContext }
       ]
       
       console.log('Sending request to backend:', { model: selectedModel, messagesCount: messages.length })
@@ -400,9 +527,12 @@ export default function AIChat() {
     abortController?.abort()
   }
 
-  const filteredConversations = conversations.filter(c =>
-    c.title.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  const filteredConversations = conversations.filter(c => {
+    const query = searchQuery.toLowerCase()
+    const matchesFolder = folderFilter === 'All' || (c.folder || 'General') === folderFilter
+    const matchesSearch = c.title.toLowerCase().includes(query) || c.messages.some(m => m.content.toLowerCase().includes(query))
+    return matchesFolder && matchesSearch
+  })
 
   return (
     <div className="flex h-[calc(100vh-140px)] gap-6">
@@ -420,7 +550,7 @@ export default function AIChat() {
             <Plus className="w-5 h-5" />
           </button>
         </div>
-        <div className="p-3">
+        <div className="p-3 space-y-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
             <input
@@ -431,6 +561,13 @@ export default function AIChat() {
               className="w-full pl-10 pr-4 py-2 bg-slate-100 dark:bg-slate-800 border-0 rounded-xl text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-green-500"
             />
           </div>
+          <select
+            value={folderFilter}
+            onChange={(e) => setFolderFilter(e.target.value)}
+            className="w-full px-3 py-2 bg-slate-100 dark:bg-slate-800 border-0 rounded-xl text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-green-500"
+          >
+            {folders.map(folder => <option key={folder} value={folder}>{folder}</option>)}
+          </select>
         </div>
         <div className="flex-1 overflow-y-auto p-3 space-y-2">
           {filteredConversations.map(conv => (
@@ -515,6 +652,30 @@ export default function AIChat() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            {currentConversation && (
+              <>
+                <input
+                  value={currentConversation.folder || 'General'}
+                  onChange={(e) => updateConversationFolder(currentConversation.id, e.target.value)}
+                  className="w-28 px-3 py-2 bg-slate-100 dark:bg-slate-800 rounded-xl text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-green-500"
+                  title="Folder"
+                />
+                <button onClick={() => exportChat('markdown')} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500" title="Export Markdown">
+                  <Download className="w-5 h-5" />
+                </button>
+                <button onClick={shareChat} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500" title="Share Chat">
+                  <Share2 className="w-5 h-5" />
+                </button>
+              </>
+            )}
+            <select
+              value={selectedPersonaId}
+              onChange={(e) => setSelectedPersonaId(e.target.value)}
+              className="px-3 py-2 bg-slate-100 dark:bg-slate-800 rounded-xl text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-green-500"
+              title="Persona"
+            >
+              {PERSONAS.map(persona => <option key={persona.id} value={persona.id}>{persona.name}</option>)}
+            </select>
             {currentConversation && currentConversation.messages.length > 0 && (
               <button
                 onClick={clearChat}
@@ -643,7 +804,22 @@ export default function AIChat() {
                         ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white'
                         : 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100'
                     )}>
-                      {msg.role === 'assistant' ? (
+                      {msg.attachments?.length ? (
+                        <div className="mb-3 flex flex-wrap gap-2">
+                          {msg.attachments.map(file => (
+                            <div key={file.id} className="rounded-xl bg-white/15 dark:bg-slate-700/70 p-2 text-xs">
+                              {file.previewUrl ? (
+                                <img src={file.previewUrl} alt={file.name} className="mb-2 max-h-40 max-w-60 rounded-lg object-contain" />
+                              ) : null}
+                              <div className="flex items-center gap-2">
+                                <FileText className="w-3.5 h-3.5" />
+                                <span>{file.name}</span>
+                                <span className="opacity-70">{formatFileSize(file.size)}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}                      {msg.role === 'assistant' ? (
                         <div className="prose prose-slate dark:prose-invert max-w-none">
                           <ReactMarkdown
                             remarkPlugins={[remarkGfm]}
@@ -742,13 +918,38 @@ export default function AIChat() {
         </div>
         {/* Input */}
         <div className="p-4 border-t border-slate-200 dark:border-slate-800">
+          {showPrompts && (
+            <div className="mb-3 grid grid-cols-1 md:grid-cols-4 gap-2">
+              {PROMPT_LIBRARY.map(prompt => (
+                <button key={prompt.title} type="button" onClick={() => { setInput(prev => `${prev}${prompt.prompt}`); setShowPrompts(false) }} className="text-left p-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">
+                  <span className="block text-sm font-medium text-slate-800 dark:text-slate-100">{prompt.title}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {pendingAttachments.length > 0 && (
+            <div className="mb-3 flex flex-wrap gap-2">
+              {pendingAttachments.map(file => (
+                <div key={file.id} className="flex items-center gap-2 rounded-xl bg-slate-100 dark:bg-slate-800 px-3 py-2 text-sm text-slate-700 dark:text-slate-200">
+                  {file.previewUrl ? <img src={file.previewUrl} alt={file.name} className="h-10 w-10 rounded-lg object-cover" /> : <FileText className="w-4 h-4" />}
+                  <span>{file.name}</span>
+                  <span className="text-xs text-slate-500">{formatFileSize(file.size)}</span>
+                  <button type="button" onClick={() => removePendingAttachment(file.id)} className="text-slate-500 hover:text-red-500"><X className="w-4 h-4" /></button>
+                </div>
+              ))}
+            </div>
+          )} 
           <form onSubmit={handleSubmit} className="relative">
             <div className="flex gap-2 mb-2">
-              <label className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-500 rounded-lg cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-all text-sm">
+              <button type="button" onClick={() => setShowPrompts(!showPrompts)} className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-500 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-all text-sm">
+                <Library className="w-4 h-4" />
+                <span>Prompt Library</span>
+              </button>
+              <button type="button" onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-500 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-all text-sm">
                 <UploadCloud className="w-4 h-4" />
-                <span>Upload</span>
-                <input type="file" className="hidden" />
-              </label>
+                <span>Upload image/PDF/file</span>
+              </button>
+              <input ref={fileInputRef} type="file" className="hidden" multiple accept="image/*,.pdf,.txt,.md,.csv,.json,.doc,.docx" onChange={(e) => handleFilesSelected(e.target.files)} />
             </div>
             <textarea
               value={input}
@@ -759,7 +960,7 @@ export default function AIChat() {
                   handleSubmit()
                 }
               }}
-              placeholder="Type your message..."
+              placeholder={`Message ${selectedPersona.name}...`}
               className="w-full px-4 py-3 pr-24 bg-slate-100 dark:bg-slate-800 border-0 rounded-xl text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
               rows={1}
               style={{ maxHeight: '200px' }}
@@ -778,7 +979,7 @@ export default function AIChat() {
               ) : (
                 <button
                   type="submit"
-                  disabled={!input.trim()}
+                  disabled={!input.trim() && pendingAttachments.length === 0}
                   className="px-4 py-2 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 disabled:opacity-50 text-white rounded-xl font-medium transition-all flex items-center gap-2"
                 >
                   <Send className="w-4 h-4" />

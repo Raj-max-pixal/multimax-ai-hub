@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logger import get_logger
 from app.document.exceptions import ChunkNotFoundError, DocumentNotFoundError
-from app.document.models import DocumentChunk, DocumentRecord, DocumentShare
+from app.document.models import DocumentChunk, Document as DocumentRecord, DocumentShare
 
 logger = get_logger("document.repositories")
 

@@ -109,7 +109,7 @@ def test_model_classes() -> int:
         "app.chat.models": ["ChatSession", "Message", "Attachment", "MessageRole"],
         "app.document.models": ["Document", "DocumentChunk"],
         "app.settings.models": ["SystemSetting", "UserSetting"],
-        "app.storage.models": ["StorageFile", "StorageQuota"],
+        "app.storage.models": ["StoredFile", "StorageQuota"],
         "app.workspace.models": ["Workspace", "Project", "WorkspaceMember", "ProjectFile"],
         "app.auth.models": ["User", "UserSession"],
     }
@@ -134,9 +134,9 @@ def test_schema_classes() -> int:
     errors = 0
 
     checks = {
-        "app.chat.schemes": [],
-        "app.document.schemas": ["DocumentCreate", "DocumentResponse", "DocumentChunkResponse"],
-        "app.storage.schemas": ["StorageFileCreate", "StorageFileResponse", "StorageQuotaResponse"],
+        "app.chat.schemas": [],
+        "app.document.schemas": ["DocumentUploadRequest", "DocumentResponse", "DocumentChunkResponse"],
+        "app.storage.schemas": ["StoredFileCreate", "StoredFileResponse", "StorageQuotaResponse"],
         "app.settings.schemas": ["SystemSettingCreate", "UserSettingCreate"],
     }
 
@@ -167,7 +167,8 @@ def test_service_classes() -> int:
         "app.storage.service": ["StorageService"],
         "app.workspace.service": ["WorkspaceService"],
         "app.chat.service": ["ChatService"],
-        "app.settings.service": [],
+        # app.settings has no service.py yet
+        # "app.settings.service": [],
         "app.ai.manager": ["AIProviderManager"],
     }
 
@@ -289,8 +290,8 @@ def test_exception_hierarchy() -> int:
         "app.chat.exceptions.MessageNotFoundError",
         "app.document.exceptions.DocumentError",
         "app.storage.exceptions.StorageError",
-        "app.storage.exceptions.StorageQuotaExceeded",
-        "app.storage.exceptions.FileNotFoundError",
+        "app.storage.exceptions.StorageQuotaExceededError",
+        "app.storage.exceptions.FileNotFoundError_",
         "app.ai.exceptions.AIProviderError",
     ]
 

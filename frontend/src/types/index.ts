@@ -14,6 +14,7 @@ export interface Message {
   role: 'user' | 'assistant' | 'system'
   content: string
   timestamp: string | Date
+  attachments?: ChatAttachment[]
 }
 
 export interface Conversation {
@@ -23,4 +24,20 @@ export interface Conversation {
   created_at: string | Date
   updated_at: string | Date
   pinned?: boolean
+  folder?: string
+  personaId?: string
+  shared?: boolean
+  shareId?: string
+}
+
+export interface ChatAttachment {
+  id: string
+  name: string
+  type: string
+  size: number
+  url?: string
+  previewUrl?: string
+  base64?: string
+  status?: 'ready' | 'uploaded' | 'error'
+  documentId?: string
 }

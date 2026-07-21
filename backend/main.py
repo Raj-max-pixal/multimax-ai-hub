@@ -35,22 +35,137 @@ app.add_middleware(
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 
+
+memory_store: List[dict] = []
+automation_store: List[dict] = []
+agent_runs: List[dict] = []
 # In-memory document store for demo
 documents_db = []
 
 class ChatMessage(BaseModel):
     role: Literal["user", "assistant", "system"]
     content: str = Field(..., min_length=1)
+    images: Optional[List[str]] = None
 
 class ChatRequest(BaseModel):
     model: str = Field(..., min_length=1)
     messages: List[ChatMessage] = Field(..., min_length=1)
 
+
+class CodingAssistRequest(BaseModel):
+    task: Literal["generate", "fix", "explain", "refactor", "tests", "readme", "api", "project", "review"]
+    prompt: str = Field(..., min_length=1)
+    code: Optional[str] = None
+    language: Optional[str] = "TypeScript"
+    model: Optional[str] = "qwen3:4b"
+
+class ResearchRequest(BaseModel):
+    query: str = Field(..., min_length=1)
+    mode: Literal["web", "deep", "academic", "news", "fact-check", "report"] = "web"
+    model: Optional[str] = "qwen3:4b"
+    max_sources: int = Field(5, ge=1, le=10)
+
+class ResearchSource(BaseModel):
+    title: str
+    url: str
+    snippet: str = ""
+
+class AgentRunRequest(BaseModel):
+    goal: str = Field(..., min_length=1)
+    agent_type: Literal["research", "browser", "shopping", "travel", "data", "report", "general"] = "general"
+    model: Optional[str] = "qwen3:4b"
+    max_steps: int = Field(5, ge=1, le=12)
+
+class MemoryCreateRequest(BaseModel):
+    content: str = Field(..., min_length=1)
+    category: Literal["profile", "project", "preference", "task", "knowledge"] = "knowledge"
+    tags: List[str] = []
+
+class AutomationCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1)
+    trigger: str = Field(..., min_length=1)
+    actions: List[str] = Field(..., min_length=1)
+    enabled: bool = True
 class DocumentChatRequest(BaseModel):
     query: str = Field(..., min_length=1)
     document_ids: List[str] = Field(..., min_length=1)
     model: Optional[str] = "phi3:latest"
 
+
+def _build_coding_prompt(request: CodingAssistRequest) -> str:
+    task_prompts = {
+        "generate": "Generate clean, production-ready code for the request.",
+        "fix": "Find and fix bugs. Explain the root cause, then provide corrected code.",
+        "explain": "Explain the code clearly, including flow, important functions, and edge cases.",
+        "refactor": "Refactor for readability, maintainability, performance, and safety. Preserve behavior.",
+        "tests": "Generate meaningful tests with edge cases and explain how to run them.",
+        "readme": "Generate a polished README with setup, usage, scripts, env vars, and architecture notes.",
+        "api": "Design and generate API endpoints, schemas, validation, errors, and examples.",
+        "project": "Create a project plan and starter file structure with key code snippets.",
+        "review": "Review the code for correctness, security, performance, and maintainability.",
+    }
+    code_block = f"\n\nExisting code:\n```{request.language or ''}\n{request.code}\n```" if request.code else ""
+    return (
+        "You are Multimax AI Hub Coding Assistant. Be practical, concise, and production-minded.\n\n"
+        f"Task: {task_prompts.get(request.task, request.task)}\n"
+        f"Language/stack: {request.language or 'Auto-detect'}\n"
+        f"User request:\n{request.prompt}"
+        f"{code_block}\n\n"
+        "Return sections: Summary, Solution, Code, How to run/test, Next improvements."
+    )
+
+async def _ollama_complete(model: str, prompt: str, system: str = "You are a helpful assistant.") -> str:
+    async with httpx.AsyncClient(timeout=180.0) as client:
+        response = await client.post(
+            f"{OLLAMA_URL}/api/chat",
+            json={
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": prompt},
+                ],
+                "stream": False,
+            },
+        )
+        response.raise_for_status()
+        data = response.json()
+        return data.get("message", {}).get("content") or data.get("response") or ""
+
+def _extract_duckduckgo_results(html: str, max_sources: int) -> List[ResearchSource]:
+    import html as html_lib
+    import re
+    results: List[ResearchSource] = []
+    pattern = re.compile(r'<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>(.*?)</a>.*?<a[^>]+class="result__snippet"[^>]*>(.*?)</a>', re.S)
+    for url, title, snippet in pattern.findall(html):
+        clean_title = re.sub(r"<.*?>", "", title)
+        clean_snippet = re.sub(r"<.*?>", "", snippet)
+        results.append(ResearchSource(
+            title=html_lib.unescape(clean_title).strip(),
+            url=html_lib.unescape(url).strip(),
+            snippet=html_lib.unescape(clean_snippet).strip(),
+        ))
+        if len(results) >= max_sources:
+            break
+    return results
+
+async def _search_web(query: str, max_sources: int) -> List[ResearchSource]:
+    try:
+        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+            response = await client.get("https://duckduckgo.com/html/", params={"q": query})
+            response.raise_for_status()
+            results = _extract_duckduckgo_results(response.text, max_sources)
+            if results:
+                return results
+    except Exception as e:
+        logger.warning(f"Web search failed: {e}")
+
+    return [
+        ResearchSource(
+            title="Search unavailable",
+            url="local://search-unavailable",
+            snippet="The research endpoint could not reach the web search provider. The AI summary will use the query only.",
+        )
+    ]
 @app.get("/")
 async def root():
     return {"message": "Multimax AI Hub API", "version": "0.3.0"}
@@ -92,7 +207,13 @@ async def chat(request: ChatRequest):
                     f"{OLLAMA_URL}/api/chat",
                     json={
                         "model": request.model,
-                        "messages": [{"role": m.role, "content": m.content} for m in request.messages],
+                        "messages": [
+                            {
+                                **{"role": m.role, "content": m.content},
+                                **({"images": m.images} if m.images else {}),
+                            }
+                            for m in request.messages
+                        ],
                         "stream": True
                     }
                 ) as response:
@@ -108,6 +229,166 @@ async def chat(request: ChatRequest):
         logger.error(f"Chat error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to generate response")
 
+
+@app.post("/api/coding/assist")
+async def coding_assist(request: CodingAssistRequest):
+    try:
+        prompt = _build_coding_prompt(request)
+        answer = await _ollama_complete(
+            request.model or "qwen3:4b",
+            prompt,
+            "You are a senior software engineer inside Multimax AI Hub. Prioritize correct, maintainable, secure code.",
+        )
+        return {
+            "task": request.task,
+            "language": request.language,
+            "model": request.model,
+            "answer": answer,
+        }
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=e.response.status_code, detail=f"Ollama error: {e.response.text}")
+    except Exception as e:
+        logger.error(f"Coding assistant error: {e}")
+        raise HTTPException(status_code=500, detail=f"Coding assistant failed: {e}")
+
+@app.post("/api/research/search")
+async def research_search(request: ResearchRequest):
+    try:
+        search_query = request.query
+        if request.mode == "academic":
+            search_query = f"{request.query} research paper academic"
+        elif request.mode == "news":
+            search_query = f"{request.query} latest news"
+        elif request.mode == "fact-check":
+            search_query = f"{request.query} fact check evidence"
+
+        sources = await _search_web(search_query, request.max_sources)
+        source_text = "\n".join(
+            f"[{i + 1}] {source.title}\nURL: {source.url}\nSnippet: {source.snippet}"
+            for i, source in enumerate(sources)
+        )
+        prompt = (
+            f"Research mode: {request.mode}\n"
+            f"Question: {request.query}\n\n"
+            f"Sources:\n{source_text}\n\n"
+            "Write a helpful answer with: Key answer, Evidence by source number, Uncertainties, and Next searches. "
+            "If sources are unavailable, say that clearly and provide a local reasoning-only draft."
+        )
+        summary = await _ollama_complete(
+            request.model or "qwen3:4b",
+            prompt,
+            "You are Multimax Research Engine. Be careful with citations and uncertainty.",
+        )
+        return {
+            "query": request.query,
+            "mode": request.mode,
+            "model": request.model,
+            "sources": [source.model_dump() for source in sources],
+            "summary": summary,
+        }
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=e.response.status_code, detail=f"Ollama error: {e.response.text}")
+    except Exception as e:
+        logger.error(f"Research error: {e}")
+        raise HTTPException(status_code=500, detail=f"Research failed: {e}")
+
+@app.post("/api/agents/run")
+async def run_agent(request: AgentRunRequest):
+    try:
+        prompt = (
+            f"Agent type: {request.agent_type}\n"
+            f"Goal: {request.goal}\n"
+            f"Max steps: {request.max_steps}\n\n"
+            "Create an executable agent plan. Return: Objective, Assumptions, Step-by-step plan, Tools/data needed, Risks, Final deliverable. "
+            "If browser/live action is needed, say what the user must approve before execution."
+        )
+        result = await _ollama_complete(
+            request.model or "qwen3:4b",
+            prompt,
+            "You are Multimax Agent Planner. Plan multi-step tasks safely and concretely.",
+        )
+        run = {
+            "id": str(len(agent_runs) + 1),
+            "goal": request.goal,
+            "agent_type": request.agent_type,
+            "model": request.model,
+            "status": "planned",
+            "steps": result,
+        }
+        agent_runs.insert(0, run)
+        return run
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=e.response.status_code, detail=f"Ollama error: {e.response.text}")
+    except Exception as e:
+        logger.error(f"Agent run error: {e}")
+        raise HTTPException(status_code=500, detail=f"Agent run failed: {e}")
+
+@app.get("/api/agents/runs")
+async def list_agent_runs():
+    return {"runs": agent_runs}
+
+@app.post("/api/memory")
+async def create_memory(request: MemoryCreateRequest):
+    item = {
+        "id": str(len(memory_store) + 1),
+        "content": request.content,
+        "category": request.category,
+        "tags": request.tags,
+    }
+    memory_store.insert(0, item)
+    return item
+
+@app.get("/api/memory")
+async def list_memory(q: Optional[str] = None, category: Optional[str] = None):
+    results = memory_store
+    if category:
+        results = [item for item in results if item["category"] == category]
+    if q:
+        query = q.lower()
+        results = [item for item in results if query in item["content"].lower() or any(query in tag.lower() for tag in item["tags"])]
+    return {"memories": results}
+
+@app.delete("/api/memory/{memory_id}")
+async def delete_memory(memory_id: str):
+    global memory_store
+    before = len(memory_store)
+    memory_store = [item for item in memory_store if item["id"] != memory_id]
+    if len(memory_store) == before:
+        raise HTTPException(status_code=404, detail="Memory not found")
+    return {"message": "Memory deleted"}
+
+@app.post("/api/automation/workflows")
+async def create_workflow(request: AutomationCreateRequest):
+    workflow = {
+        "id": str(len(automation_store) + 1),
+        "name": request.name,
+        "trigger": request.trigger,
+        "actions": request.actions,
+        "enabled": request.enabled,
+    }
+    automation_store.insert(0, workflow)
+    return workflow
+
+@app.get("/api/automation/workflows")
+async def list_workflows():
+    return {"workflows": automation_store}
+
+@app.post("/api/automation/generate")
+async def generate_workflow(request: ResearchRequest):
+    try:
+        prompt = (
+            f"Automation request: {request.query}\n\n"
+            "Design a workflow with: name, trigger, actions, required integrations, safety checks, and test plan. "
+            "Prefer free/open-source/local tools."
+        )
+        summary = await _ollama_complete(
+            request.model or "qwen3:4b",
+            prompt,
+            "You are Multimax Automation Architect. Design safe practical workflows.",
+        )
+        return {"summary": summary}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Workflow generation failed: {e}")
 # === Document APIs ===
 
 @app.post("/api/documents/upload")

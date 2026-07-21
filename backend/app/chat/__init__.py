@@ -22,6 +22,7 @@ from app.chat.repositories import (
     MessageRepository,
     AttachmentRepository,
 )
+from app.chat.service import ChatService
 
 module_info = ModuleInfo(
     name="chat",
@@ -44,8 +45,14 @@ def register(app: Any, container: Any) -> None:
     container.register_singleton(MessageRepository, MessageRepository())
     container.register_singleton(AttachmentRepository, AttachmentRepository())
 
-    # No API routers are registered in this step.
-    # REST APIs will be added in Phase 1 Step 2.
+    from app.chat.api import router as chat_router
+
+    app.include_router(chat_router)
+    container.register_factory(ChatService, lambda: ChatService(
+        session_repo=ChatSessionRepository(),
+        message_repo=MessageRepository(),
+        attachment_repo=AttachmentRepository(),
+    ))
 
 
 __all__ = [

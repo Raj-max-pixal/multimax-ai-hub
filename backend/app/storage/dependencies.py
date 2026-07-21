@@ -11,7 +11,7 @@ from typing import AsyncGenerator
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_session
+from app.core.database import get_db_session as get_session
 from app.storage.service import StorageService
 
 

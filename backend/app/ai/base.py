@@ -181,5 +181,14 @@ class BaseProvider(ABC):
     # Optional Override — Default Implementation
     # ------------------------------------------------------------------ #
 
+    async def chat(self, request: GenerationRequest) -> GenerationResponse:
+        """Convenience method that delegates to generate().
+
+        Some consumers may call .chat() directly. By default this
+        calls self.generate(). Providers may override for custom
+        chat-specific logic.
+        """
+        return await self.generate(request)
+
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(name='{self._name}')"

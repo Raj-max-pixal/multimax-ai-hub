@@ -11,6 +11,8 @@ from typing import Any, Callable, Dict, Optional, Type, TypeVar
 
 from app.core.config import Settings, get_settings
 from app.core.logger import get_logger
+from app.chat.service import ChatService
+from typing import AsyncGenerator
 
 T = TypeVar("T")
 
@@ -103,3 +105,18 @@ def _create_default_container() -> Container:
 
     logger.info("Default DI container created with core services")
     return container
+
+
+async def get_chat_service() -> AsyncGenerator[ChatService, None]:
+    """Dependency provider for ChatService."""
+    from app.chat.repositories import ChatSessionRepository, MessageRepository, AttachmentRepository
+
+    chat_session_repo = ChatSessionRepository()
+    message_repo = MessageRepository()
+    attachment_repo = AttachmentRepository()
+    service = ChatService(
+        session_repo=chat_session_repo,
+        message_repo=message_repo,
+        attachment_repo=attachment_repo,
+    )
+    yield service

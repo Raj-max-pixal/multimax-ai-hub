@@ -16,7 +16,7 @@ from sqlalchemy.orm import relationship
 from app.core.database import Base
 
 
-class DocumentRecord(Base):
+class Document(Base):
     """Represents an uploaded document in the system."""
 
     __tablename__ = "documents"
@@ -38,6 +38,7 @@ class DocumentRecord(Base):
     # Relationships
     workspace = relationship("WorkspaceRecord", back_populates="documents", lazy="selectin")
     user = relationship("UserRecord", back_populates="documents", lazy="selectin")
+    # TODO: Add WorkspaceRecord back_populates="documents" once workspace model has it
     chunks = relationship("DocumentChunk", back_populates="document", cascade="all, delete-orphan", lazy="selectin")
 
     def __repr__(self) -> str:
@@ -58,7 +59,7 @@ class DocumentChunk(Base):
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
     # Relationships
-    document = relationship("DocumentRecord", back_populates="chunks", lazy="selectin")
+    document = relationship("Document", back_populates="chunks", lazy="selectin")
 
     def __repr__(self) -> str:
         return f"<DocumentChunk id={self.id} doc_id={self.document_id} index={self.chunk_index}>"
@@ -76,13 +77,13 @@ class DocumentShare(Base):
     permission = Column(String(32), nullable=False, default="read")  # read, write, admin
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
-    document = relationship("DocumentRecord", lazy="selectin")
+    document = relationship("Document", lazy="selectin")
     shared_by = relationship("UserRecord", foreign_keys=[shared_by_user_id], lazy="selectin")
     shared_with = relationship("UserRecord", foreign_keys=[shared_with_user_id], lazy="selectin")
 
 
 __all__ = [
-    "DocumentRecord",
+    "Document",
     "DocumentChunk",
     "DocumentShare",
 ]

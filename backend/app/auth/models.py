@@ -1,7 +1,7 @@
 """
 Auth Domain Models.
 
-Defines SQLAlchemy ORM models for User accounts and refresh tokens.
+Defines SQLAlchemy ORM models for User accounts, refresh tokens, and user sessions.
 Follows the same pattern as workspace/models.py.
 """
 
@@ -119,4 +119,40 @@ class RefreshToken(Base):
             "expires_at": self.expires_at.isoformat() if self.expires_at else None,
             "is_revoked": self.is_revoked,
             "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class UserSession(Base):
+    """User session model for tracking active sessions."""
+
+    __tablename__ = "user_sessions"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    session_token = Column(String(512), unique=True, nullable=False, index=True)
+    refresh_token_id = Column(String(36), ForeignKey("refresh_tokens.id", ondelete="SET NULL"), nullable=True)
+    ip_address = Column(String(45), default="")
+    user_agent = Column(String(512), default="")
+    is_active = Column(Boolean, default=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    last_activity_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    # Relationships
+    user = relationship("User")
+    refresh_token = relationship("RefreshToken")
+
+    __table_args__ = (
+        Index("idx_user_session_user", "user_id"),
+        Index("idx_user_session_token", "session_token"),
+    )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "is_active": self.is_active,
+            "expires_at": self.expires_at.isoformat() if self.expires_at else None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "last_activity_at": self.last_activity_at.isoformat() if self.last_activity_at else None,
         }

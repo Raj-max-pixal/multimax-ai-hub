@@ -2,6 +2,11 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
 import AIChat from './pages/AIChat'
+import AICoding from './pages/AICoding'
+import Research from './pages/Research'
+import Agents from './pages/Agents'
+import Memory from './pages/Memory'
+import Automation from './pages/Automation'
 import PDFChat from './pages/PDFChat'
 import VoiceAssistant from './pages/VoiceAssistant'
 import Settings from './pages/Settings'
@@ -42,6 +47,11 @@ function App() {
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/chat" element={<AIChat />} />
                 <Route path="/pdf" element={<PDFChat />} />
+                <Route path="/coding" element={<AICoding />} />
+                <Route path="/research" element={<Research />} />
+                <Route path="/agents" element={<Agents />} />
+                <Route path="/memory" element={<Memory />} />
+                <Route path="/automation" element={<Automation />} />
                 <Route path="/voice" element={<VoiceAssistant />} />
                 <Route path="/profile" element={<Profile />} />
                 <Route path="/settings" element={<Settings />} />
