@@ -11,6 +11,11 @@ import PDFChat from './pages/PDFChat'
 import VoiceAssistant from './pages/VoiceAssistant'
 import AIImage from './pages/AIImage'
 import VideoStudio from './pages/VideoStudio'
+import Plugins from './pages/Plugins'
+import TeamWorkspace from './pages/TeamWorkspace'
+import CommunityMarketplace from './pages/CommunityMarketplace'
+import MobileApps from './pages/MobileApps'
+import Enterprise from './pages/Enterprise'
 import Settings from './pages/Settings'
 import Login from './pages/Login'
 import Signup from './pages/Signup'
@@ -57,6 +62,11 @@ function App() {
                 <Route path="/voice" element={<VoiceAssistant />} />
                 <Route path="/image" element={<AIImage />} />
                 <Route path="/video" element={<VideoStudio />} />
+                <Route path="/plugins" element={<Plugins />} />
+                <Route path="/team" element={<TeamWorkspace />} />
+                <Route path="/marketplace" element={<CommunityMarketplace />} />
+                <Route path="/mobile" element={<MobileApps />} />
+                <Route path="/enterprise" element={<Enterprise />} />
                 <Route path="/profile" element={<Profile />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="*" element={<Navigate to="/" replace />} />

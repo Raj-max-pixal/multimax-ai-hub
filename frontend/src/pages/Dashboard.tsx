@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { MessageSquare, FileText, Mic, Sparkles, Code2, Globe2, Bot, Brain, Workflow, Image, Film } from 'lucide-react'
+import { MessageSquare, FileText, Mic, Sparkles, Code2, Globe2, Bot, Brain, Workflow, Image, Film, Plug, Users, Store, Smartphone, ShieldCheck } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 const features = [
@@ -82,7 +82,47 @@ const features = [
     path: '/voice',
     gradient: 'from-orange-500 to-orange-600',
     bgGradient: 'from-orange-500/10 to-orange-600/10'
-  }
+  },
+  {
+    title: 'Plugin Marketplace',
+    description: 'Install MCP servers, plugins, and integrations',
+    icon: Plug,
+    path: '/plugins',
+    gradient: 'from-lime-500 to-lime-600',
+    bgGradient: 'from-lime-500/10 to-lime-600/10'
+  },
+  {
+    title: 'Team Workspace',
+    description: 'Shared chats, agents, folders, and permissions',
+    icon: Users,
+    path: '/team',
+    gradient: 'from-sky-500 to-sky-600',
+    bgGradient: 'from-sky-500/10 to-sky-600/10'
+  },
+  {
+    title: 'Marketplace',
+    description: 'Publish agents, prompts, templates, and workflows',
+    icon: Store,
+    path: '/marketplace',
+    gradient: 'from-teal-500 to-teal-600',
+    bgGradient: 'from-teal-500/10 to-teal-600/10'
+  },
+  {
+    title: 'Mobile Apps',
+    description: 'Plan PWA, Android, iOS, and tablet apps',
+    icon: Smartphone,
+    path: '/mobile',
+    gradient: 'from-indigo-500 to-indigo-600',
+    bgGradient: 'from-indigo-500/10 to-indigo-600/10'
+  },
+  {
+    title: 'Enterprise',
+    description: 'SSO, audit logs, RBAC, cloud, and APIs',
+    icon: ShieldCheck,
+    path: '/enterprise',
+    gradient: 'from-slate-500 to-slate-600',
+    bgGradient: 'from-slate-500/10 to-slate-600/10'
+  },
 ]
 
 export default function Dashboard() {

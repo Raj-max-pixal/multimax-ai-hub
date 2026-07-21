@@ -20,7 +20,12 @@ import {
   Brain,
   Workflow,
   Image,
-  Film
+  Film,
+  Plug,
+  Users,
+  Store,
+  Smartphone,
+  ShieldCheck
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
@@ -38,6 +43,11 @@ const navItems = [
   { path: '/voice', label: 'Voice Assistant', icon: Mic },
   { path: '/image', label: 'Image Studio', icon: Image },
   { path: '/video', label: 'Video Studio', icon: Film },
+  { path: '/plugins', label: 'Plugins', icon: Plug },
+  { path: '/team', label: 'Team Workspace', icon: Users },
+  { path: '/marketplace', label: 'Marketplace', icon: Store },
+  { path: '/mobile', label: 'Mobile Apps', icon: Smartphone },
+  { path: '/enterprise', label: 'Enterprise', icon: ShieldCheck },
 ]
 
 export default function Layout({ children }: { children: React.ReactNode }) {

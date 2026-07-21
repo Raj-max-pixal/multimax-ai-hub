@@ -39,6 +39,11 @@ OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 memory_store: List[dict] = []
 automation_store: List[dict] = []
 agent_runs: List[dict] = []
+plugin_store: List[dict] = []
+team_store: List[dict] = []
+marketplace_store: List[dict] = []
+mobile_store: List[dict] = []
+enterprise_store: List[dict] = []
 # In-memory document store for demo
 documents_db = []
 
@@ -101,6 +106,33 @@ class VideoGenerateRequest(BaseModel):
 class VoiceChatRequest(BaseModel):
     transcript: str = Field(..., min_length=1)
     model: Optional[str] = "qwen3:4b"
+
+class PluginInstallRequest(BaseModel):
+    name: str = Field(..., min_length=1)
+    category: Literal["mcp", "integration", "agent", "workflow", "tool"] = "integration"
+    description: str = ""
+    enabled: bool = True
+
+class TeamCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1)
+    members: List[str] = []
+    permissions: List[str] = []
+
+class MarketplacePublishRequest(BaseModel):
+    title: str = Field(..., min_length=1)
+    item_type: Literal["agent", "prompt", "template", "plugin", "workflow"] = "prompt"
+    description: str = ""
+    content: str = ""
+
+class MobileBuildRequest(BaseModel):
+    platform: Literal["android", "ios", "tablet", "pwa"] = "pwa"
+    app_name: str = "Multimax AI Hub"
+    features: List[str] = []
+
+class EnterpriseConfigRequest(BaseModel):
+    feature: Literal["sso", "audit", "rbac", "cloud", "api"] = "audit"
+    enabled: bool = True
+    notes: str = ""
 class DocumentChatRequest(BaseModel):
     query: str = Field(..., min_length=1)
     document_ids: List[str] = Field(..., min_length=1)
@@ -461,10 +493,68 @@ async def generate_video(request: VideoGenerateRequest):
             prompt,
             "You are Multimax Video Studio. Create practical video storyboards and generation prompts.",
         )
-        frames = [_svg_data_url(f"{request.prompt} — scene {i + 1}", "thumbnail", "wide") for i in range(min(4, max(1, request.duration_seconds // 15)))]
+        frames = [_svg_data_url(f"{request.prompt} Ã¢â‚¬â€ scene {i + 1}", "thumbnail", "wide") for i in range(min(4, max(1, request.duration_seconds // 15)))]
         return {"prompt": request.prompt, "style": request.style, "duration_seconds": request.duration_seconds, "plan": plan, "frames": frames}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Video generation failed: {e}")
+
+@app.get("/api/plugins/catalog")
+async def plugin_catalog():
+    catalog = [
+        {"name": "GitHub", "category": "integration", "description": "Repository, issue, PR, and code workflow integration."},
+        {"name": "MCP Python SDK", "category": "mcp", "description": "Build and install Python MCP servers."},
+        {"name": "MCP TypeScript SDK", "category": "mcp", "description": "Build and install TypeScript MCP servers."},
+        {"name": "Slack", "category": "integration", "description": "Team notifications and collaboration."},
+        {"name": "Notion", "category": "integration", "description": "Docs and knowledge base integration."},
+        {"name": "Google Drive", "category": "integration", "description": "Cloud document storage connector."},
+    ]
+    return {"catalog": catalog, "installed": plugin_store}
+
+@app.post("/api/plugins/install")
+async def install_plugin(request: PluginInstallRequest):
+    plugin = {"id": str(len(plugin_store) + 1), **request.model_dump()}
+    plugin_store.insert(0, plugin)
+    return plugin
+
+@app.get("/api/team/workspaces")
+async def list_team_workspaces():
+    return {"workspaces": team_store}
+
+@app.post("/api/team/workspaces")
+async def create_team_workspace(request: TeamCreateRequest):
+    workspace = {"id": str(len(team_store) + 1), **request.model_dump(), "shared_chats": [], "shared_agents": [], "folders": ["General"]}
+    team_store.insert(0, workspace)
+    return workspace
+
+@app.get("/api/marketplace/items")
+async def list_marketplace_items():
+    return {"items": marketplace_store}
+
+@app.post("/api/marketplace/items")
+async def publish_marketplace_item(request: MarketplacePublishRequest):
+    item = {"id": str(len(marketplace_store) + 1), **request.model_dump(), "downloads": 0, "rating": 5.0}
+    marketplace_store.insert(0, item)
+    return item
+
+@app.get("/api/mobile/builds")
+async def list_mobile_builds():
+    return {"builds": mobile_store}
+
+@app.post("/api/mobile/builds")
+async def create_mobile_build(request: MobileBuildRequest):
+    build = {"id": str(len(mobile_store) + 1), **request.model_dump(), "status": "planned", "outputs": ["responsive UI", "offline-ready PWA shell", "mobile navigation"]}
+    mobile_store.insert(0, build)
+    return build
+
+@app.get("/api/enterprise/config")
+async def list_enterprise_config():
+    return {"configs": enterprise_store}
+
+@app.post("/api/enterprise/config")
+async def save_enterprise_config(request: EnterpriseConfigRequest):
+    config = {"id": str(len(enterprise_store) + 1), **request.model_dump()}
+    enterprise_store.insert(0, config)
+    return config
 # === Document APIs ===
 
 @app.post("/api/documents/upload")
