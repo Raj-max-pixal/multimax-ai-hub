@@ -158,3 +158,20 @@ I will build in this exact order, one step at a time, getting confirmation befor
 13. Frontend — Settings Page
 14. Docker & Deployment
 15. Testing Infrastructure
+```
+
+## 2026-07-23 Audit Update
+
+### Completed in this audit pass
+- Restored frontend shared `lib` layer (`api`, `api-client`, `auth-api`, `utils`) so Phase 1/2/3/4/7/8/9/10/11/12/13/14/15 pages compile again.
+- Fixed backend modular app runtime entrypoint (`app = create_app()` in `backend/app/main.py`) for dev startup compatibility.
+- Added backend test suite folder (`backend/tests`) and baseline health/models tests.
+- Re-ran validation:
+  - Backend tests (`pytest`) ✅
+  - Frontend typecheck (`tsc --noEmit`) ✅
+  - Frontend production build (`npm run build`) ✅
+
+### Remaining for full Phase 0 completion
+- Expand backend test coverage beyond health/models.
+- Resolve pre-existing backend lint backlog (Ruff).
+- Finish production hardening tasks (auth completeness, monitoring depth, deployment automation).

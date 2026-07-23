@@ -52,18 +52,18 @@ to the modular `backend/app/` architecture.
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| App Factory (`main.py`) | ❌ | Need to create FastAPI app with wire-up |
-| Health Endpoint | ❌ | Needed for Docker/K8s health checks |
-| Root Router | ❌ | Need to aggregate all domain routers |
+| App Factory (`main.py`) | ✅ | Implemented (`create_app`) with lifespan startup/shutdown |
+| Health Endpoint | ✅ | `/health/live`, `/health/ready`, and legacy `/api/health` available |
+| Root Router | ✅ | Domain routers + legacy-compatible routes are wired |
 
 ### 5. Testing
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| Core Tests | ❌ | Config, Container, Logger, Events, DB |
+| Core Tests | 🔄 | Initial endpoint tests created under `backend/tests/` |
 | Workspace Tests | ❌ | API, Service, Models |
 | Integration Tests | ❌ | Full app startup |
-| Legacy Functionality Tests | ❌ | Verify RAG/chat/document endpoints still work |
+| Legacy Functionality Tests | 🔄 | Baseline health/models coverage added; deeper endpoint tests pending |
 
 ### 6. Legacy Code (`backend/legacy/`)
 
@@ -79,7 +79,7 @@ to the modular `backend/app/` architecture.
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| CHANGELOG.md | ❌ | Need to create |
+| CHANGELOG.md | ✅ | Created and updated with 2026-07-23 stability fixes |
 | ADR-001 | ✅ | Architecture Decision Records |
 | ADR-002 | ✅ | Domain Modules |
 | ADR-003 | ✅ | AI Provider Abstraction |
@@ -118,3 +118,11 @@ curl http://localhost:8000/api/v1/workspaces/
 
 # 4. Run tests
 pytest -v
+```
+
+## 2026-07-23 Validation Update
+
+- ✅ Frontend build and typecheck recovered by restoring missing `frontend/src/lib/*` modules.
+- ✅ Backend startup path recovered for `uvicorn app.main:app --reload`.
+- ✅ Backend test folder aligned with existing pytest/make workflow.
+- ⚠️ Full backend lint cleanup remains a separate task (large pre-existing Ruff backlog).

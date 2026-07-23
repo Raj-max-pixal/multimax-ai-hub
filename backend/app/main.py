@@ -11,6 +11,7 @@ import os
 from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
+import httpx
 from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -563,6 +564,10 @@ def create_app() -> FastAPI:
     _setup_exception_handlers(app)
 
     return app
+
+
+# Uvicorn default entrypoint (used by Makefile: `uvicorn app.main:app --reload`)
+app = create_app()
 
 
 # --------------------------------------------------------------------------- #

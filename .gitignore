@@ -20,6 +20,8 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+!frontend/src/lib/
+!frontend/src/lib/**
 
 # Environment
 .env
