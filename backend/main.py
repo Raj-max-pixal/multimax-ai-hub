@@ -14,6 +14,7 @@ from services import (
     RAGService
 )
 import json
+import traceback
 
 load_dotenv()
 
@@ -162,7 +163,7 @@ def _build_coding_prompt(request: CodingAssistRequest) -> str:
     )
 
 async def _ollama_complete(model: str, prompt: str, system: str = "You are a helpful assistant.") -> str:
-    async with httpx.AsyncClient(timeout=180.0) as client:
+    async with httpx.AsyncClient(timeout=600.0) as client:
         response = await client.post(
             f"{OLLAMA_URL}/api/chat",
             json={
@@ -325,8 +326,9 @@ async def coding_assist(request: CodingAssistRequest):
     except httpx.HTTPStatusError as e:
         raise HTTPException(status_code=e.response.status_code, detail=f"Ollama error: {e.response.text}")
     except Exception as e:
-        logger.error(f"Coding assistant error: {e}")
-        raise HTTPException(status_code=500, detail=f"Coding assistant failed: {e}")
+        logger.error(f"Coding assistant error: {type(e).__name__}: {e!r}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Coding assistant failed: {type(e).__name__}: {e!r}")
 
 @app.post("/api/research/search")
 async def research_search(request: ResearchRequest):
@@ -366,8 +368,9 @@ async def research_search(request: ResearchRequest):
     except httpx.HTTPStatusError as e:
         raise HTTPException(status_code=e.response.status_code, detail=f"Ollama error: {e.response.text}")
     except Exception as e:
-        logger.error(f"Research error: {e}")
-        raise HTTPException(status_code=500, detail=f"Research failed: {e}")
+        logger.error(f"Research error: {type(e).__name__}: {e!r}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Research failed: {type(e).__name__}: {e!r}")
 
 @app.post("/api/agents/run")
 async def run_agent(request: AgentRunRequest):
