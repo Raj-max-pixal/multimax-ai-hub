@@ -1,0 +1,16 @@
+=== VERIFICATION: both endpoints ===
+Model warm check: qwen3:4b loaded in memory
+No client-side timeout (Ollama may still be slow)
+
+POST /api/coding/assist -> HTTP 200
+  PASS: answer length=2858 chars
+  sample: ### Summary  
+This function safely adds two numeric inputs (integers or floats) with input validation to prevent runtime errors from invalid types. It...
+
+POST /api/research/search -> HTTP 200
+  PASS: sources=1 summary_len=1747
+  first source: Search unavailable
+  summary sample: ### Key answer  
+Python is a high-level, interpreted, general-purpose programming language that emphasizes code readability and simplicity. Created by...
+
+=== DONE ===

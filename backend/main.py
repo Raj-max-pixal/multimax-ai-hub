@@ -163,7 +163,9 @@ def _build_coding_prompt(request: CodingAssistRequest) -> str:
     )
 
 async def _ollama_complete(model: str, prompt: str, system: str = "You are a helpful assistant.") -> str:
-    async with httpx.AsyncClient(timeout=600.0) as client:
+    # Local LLM inference (e.g. qwen3:4b) has unbounded latency: cold-start model loading
+    # can exceed any fixed timeout. Use timeout=None to match the streaming /api/chat path.
+    async with httpx.AsyncClient(timeout=None) as client:
         response = await client.post(
             f"{OLLAMA_URL}/api/chat",
             json={

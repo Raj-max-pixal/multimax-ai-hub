@@ -1,0 +1,9 @@
+=== VERIFICATION: both endpoints ===
+Model warm check: qwen3:4b loaded in memory
+No client-side timeout (Ollama may still be slow)
+
+POST /api/coding/assist -> HTTP 200
+  PASS: answer length=1532 chars
+  sample: ### Summary  
+This function safely adds two numeric values by validating input types to prevent runtime errors. It ensures inputs are integers or floa...
+

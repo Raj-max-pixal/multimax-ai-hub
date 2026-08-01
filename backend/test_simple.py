@@ -1,4 +1,4 @@
-"""
+ """
 Quick test of the endpoints with short prompts.
 Uses asyncio to call the endpoint functions directly 
 and captures full traceback.

@@ -1,4 +1,4 @@
-"""
+ """
 Bypass FastAPI error handling - directly call endpoint handler functions
 with mocked Ollama to capture the exact exception.
 """
