@@ -23,7 +23,7 @@ async def get_storage_service(
     yield StorageService(session=session)
 
 
-async def get_current_user_id(request: Request) -> int:
+async def get_current_user_id(request: Request) -> str:
     """Extract the authenticated user ID from the request state.
 
     Relies on auth middleware having set request.state.user_id.

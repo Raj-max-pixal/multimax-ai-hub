@@ -52,8 +52,8 @@ class StorageService:
         original_filename: str,
         content_type: Optional[str] = None,
         file_size: int = 0,
-        user_id: int,
-        workspace_id: Optional[int] = None,
+        user_id: str,
+        workspace_id: Optional[str] = None,
         is_public: bool = False,
         metadata_json: Optional[dict[str, Any]] = None,
     ) -> StoredFile:
@@ -133,9 +133,9 @@ class StorageService:
 
     async def list_files(
         self,
-        user_id: int,
+        user_id: str,
         *,
-        workspace_id: Optional[int] = None,
+        workspace_id: Optional[str] = None,
         page: int = 1,
         page_size: int = 20,
     ) -> tuple[list[StoredFile], int]:
@@ -168,7 +168,7 @@ class StorageService:
         if workspace_id:
             await self.quota_repo.subtract_bytes("workspace", workspace_id, file_size)
 
-    async def get_storage_info(self, user_id: int) -> dict[str, Any]:
+    async def get_storage_info(self, user_id: str) -> dict[str, Any]:
         """Get storage summary for a user."""
         total_files = await self.file_repo.count_by_user(user_id)
         total_bytes = await self.file_repo.total_bytes_by_user(user_id)
@@ -190,7 +190,7 @@ class StorageService:
             "quota": quota_data,
         }
 
-    async def _check_quota(self, scope: str, scope_id: int, additional_bytes: int) -> None:
+    async def _check_quota(self, scope: str, scope_id: str, additional_bytes: int) -> None:
         """Raise QuotaExceededError if adding bytes would exceed the limit."""
         quota = await self.quota_repo.get_or_create_quota(scope, scope_id)
         if quota.used_bytes + additional_bytes > quota.max_bytes:

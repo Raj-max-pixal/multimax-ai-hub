@@ -46,6 +46,18 @@ class Settings(BaseSettings):
         alias="DATABASE_URL_SYNC",
         description="Sync database URL (used for alembic migrations).",
     )
+    DATABASE_AUTO_CREATE: Optional[bool] = Field(
+        default=None,
+        alias="DATABASE_AUTO_CREATE",
+        description="Create tables automatically only for local SQLite development/tests.",
+    )
+    DATABASE_POOL_SIZE: int = Field(default=10, alias="DATABASE_POOL_SIZE", ge=1)
+    DATABASE_MAX_OVERFLOW: int = Field(default=20, alias="DATABASE_MAX_OVERFLOW", ge=0)
+    DATABASE_POOL_TIMEOUT_SECONDS: int = Field(
+        default=30,
+        alias="DATABASE_POOL_TIMEOUT_SECONDS",
+        ge=1,
+    )
 
     # PostgreSQL (only used if DATABASE_URL is explicitly set)
     POSTGRES_HOST: str = Field(default="localhost", alias="POSTGRES_HOST")
@@ -57,6 +69,12 @@ class Settings(BaseSettings):
     @property
     def database_url(self) -> str:
         if self.DATABASE_URL:
+            if self.DATABASE_URL.startswith("postgresql://"):
+                return self.DATABASE_URL.replace(
+                    "postgresql://", "postgresql+asyncpg://", 1
+                )
+            if self.DATABASE_URL.startswith("sqlite://"):
+                return self.DATABASE_URL.replace("sqlite://", "sqlite+aiosqlite://", 1)
             return self.DATABASE_URL
         # Default to SQLite for zero-budget local development
         return "sqlite+aiosqlite:///./data/multimax.db"
@@ -69,6 +87,16 @@ class Settings(BaseSettings):
             # Build sync URL from async URL by removing +asyncpg
             return self.DATABASE_URL.replace("+asyncpg", "").replace("+aiosqlite", "")
         return "sqlite:///./data/multimax.db"
+
+    @property
+    def database_auto_create(self) -> bool:
+        """Allow metadata creation only for local SQLite development/test runs."""
+        if self.DATABASE_AUTO_CREATE is not None:
+            return self.DATABASE_AUTO_CREATE
+        return (
+            self.APP_ENV.lower() in {"development", "test"}
+            and self.database_url.startswith("sqlite")
+        )
 
     # --- ChromaDB ---
     CHROMADB_HOST: str = Field(default="localhost", alias="CHROMADB_HOST")

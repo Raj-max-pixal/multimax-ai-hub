@@ -21,9 +21,9 @@ router = APIRouter(prefix="/api/v1/storage", tags=["storage"])
 @router.post("/upload", response_model=StoredFileResponse, status_code=status.HTTP_201_CREATED)
 async def upload_file(
     file: UploadFile = File(...),
-    workspace_id: Optional[int] = Form(None),
+    workspace_id: Optional[str] = Form(None),
     is_public: bool = Form(False),
-    user_id: int = Depends(get_current_user_id),
+    user_id: str = Depends(get_current_user_id),
     storage: StorageService = Depends(get_storage_service),
 ) -> StoredFileResponse:
     """Upload a file for the authenticated user."""
@@ -49,8 +49,8 @@ async def upload_file(
 async def list_files(
     page: int = 1,
     page_size: int = 20,
-    workspace_id: Optional[int] = None,
-    user_id: int = Depends(get_current_user_id),
+    workspace_id: Optional[str] = None,
+    user_id: str = Depends(get_current_user_id),
     storage: StorageService = Depends(get_storage_service),
 ) -> StoredFileListResponse:
     """List the authenticated user's stored files."""
@@ -106,7 +106,7 @@ async def delete_file(
 
 @router.get("/info", response_model=StorageInfoResponse)
 async def storage_info(
-    user_id: int = Depends(get_current_user_id),
+    user_id: str = Depends(get_current_user_id),
     storage: StorageService = Depends(get_storage_service),
 ) -> StorageInfoResponse:
     """Get storage usage summary for the authenticated user."""

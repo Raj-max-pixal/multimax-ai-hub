@@ -402,7 +402,7 @@ export default function AIChat() {
       let buffer = '' // Accumulate partial JSON lines across chunks
       
       if (reader) {
-        while (true) {
+        for (;;) {
           const { done, value } = await reader.read()
           if (done) {
             // Process any remaining data in buffer
@@ -824,7 +824,7 @@ export default function AIChat() {
                           <ReactMarkdown
                             remarkPlugins={[remarkGfm]}
                             components={{
-                              code({ node, inline, className, children, ...props }: any) {
+                            code({ node: _node, inline, className, children, ...props }: any) {
                                 const match = /language-(\w+)/.exec(className || '')
                                 return !inline && match ? (
                                   <div className="relative my-2">

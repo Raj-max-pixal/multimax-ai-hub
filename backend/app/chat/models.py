@@ -49,7 +49,12 @@ class ChatSession(Base):
         index=True,
     )
     title = Column(String(255), default="New Chat")
-    created_by = Column(String(36), nullable=False, index=True)
+    created_by = Column(
+        String(36),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     metadata_json = Column(JSON, default=dict)
     created_at = Column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)

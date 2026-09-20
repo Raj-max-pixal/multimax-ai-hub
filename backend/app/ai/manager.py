@@ -8,6 +8,7 @@ It delegates to the appropriate provider via the ProviderRegistry.
 
 from __future__ import annotations
 
+import inspect
 from typing import AsyncGenerator, Dict, List, Optional
 
 from app.ai.base import (
@@ -219,6 +220,17 @@ class AIManager:
                     error=str(e),
                 )
         return results
+
+    async def close(self) -> None:
+        """Close provider-owned clients during application shutdown."""
+        for name in self._registry.provider_names:
+            provider = self._registry.get_provider(name)
+            close = getattr(provider, "close", None)
+            if not callable(close):
+                continue
+            result = close()
+            if inspect.isawaitable(result):
+                await result
 
 
 # Alias for backward compatibility — verification scripts look for AIProviderManager

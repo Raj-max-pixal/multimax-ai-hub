@@ -46,7 +46,12 @@ class Workspace(Base):
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     name = Column(String(255), nullable=False)
     description = Column(Text, default="")
-    owner_id = Column(String(36), nullable=False, index=True)
+    owner_id = Column(
+        String(36),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     is_personal = Column(Boolean, default=False, index=True)
     settings = Column(JSON, default=dict)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
@@ -60,6 +65,7 @@ class Workspace(Base):
     members = relationship("WorkspaceMember", back_populates="workspace", cascade="all, delete-orphan")
     projects = relationship("Project", back_populates="workspace", cascade="all, delete-orphan")
     chat_sessions = relationship("ChatSession", back_populates="workspace", cascade="all, delete-orphan")
+    documents = relationship("Document", back_populates="workspace", cascade="all, delete-orphan")
 
     __table_args__ = (
         Index("idx_workspace_owner", "owner_id"),
@@ -85,7 +91,12 @@ class WorkspaceMember(Base):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     workspace_id = Column(String(36), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
-    user_id = Column(String(36), nullable=False, index=True)
+    user_id = Column(
+        String(36),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     role = Column(Enum(WorkspaceRole), default=WorkspaceRole.VIEWER, nullable=False)
     joined_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
@@ -162,7 +173,9 @@ class ProjectFile(Base):
     size_bytes = Column(Integer, default=0)
     storage_backend = Column(String(50), default="local")
     storage_key = Column(String(1024), nullable=False)
-    uploaded_by = Column(String(36), nullable=False)
+    uploaded_by = Column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(
         DateTime(timezone=True),

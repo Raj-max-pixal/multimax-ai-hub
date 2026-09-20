@@ -12,8 +12,6 @@ import os
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Sequence
-from uuid import UUID
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -74,8 +72,8 @@ class DocumentService:
         original_filename: str,
         file_size: int,
         mime_type: str | None,
-        user_id: int,
-        workspace_id: int | None = None,
+        user_id: str,
+        workspace_id: str | None = None,
     ) -> DocumentRecord:
         """Register an uploaded document in the database.
 
@@ -92,7 +90,7 @@ class DocumentService:
             The created DocumentRecord.
         """
         record = DocumentRecord(
-            id=uuid.uuid4(),
+            id=str(uuid.uuid4()),
             filename=filename,
             original_filename=original_filename,
             file_path=file_path,
@@ -104,15 +102,15 @@ class DocumentService:
         )
         return await self.doc_repo.create(record)
 
-    async def get_document(self, document_id: UUID) -> DocumentRecord:
+    async def get_document(self, document_id: str) -> DocumentRecord:
         """Fetch a document by ID, raising if not found."""
         return await self.doc_repo.get_by_id_or_raise(document_id)
 
     async def list_user_documents(
         self,
-        user_id: int,
+        user_id: str,
         *,
-        workspace_id: int | None = None,
+        workspace_id: str | None = None,
         page: int = 1,
         page_size: int = 20,
     ) -> tuple[list[DocumentRecord], int]:
@@ -124,7 +122,7 @@ class DocumentService:
             page_size=page_size,
         )
 
-    async def delete_document(self, document_id: UUID) -> None:
+    async def delete_document(self, document_id: str) -> None:
         """Delete a document and its files."""
         doc = await self.doc_repo.get_by_id_or_raise(document_id)
 
@@ -142,7 +140,7 @@ class DocumentService:
 
     async def process_and_index_document(
         self,
-        document_id: UUID,
+        document_id: str,
         *,
         text_extractor: Any,  # Callable[[str], str] — extract text from file
         embedding_fn: Any,  # Callable[[str], list[float]] — generate embedding
@@ -176,7 +174,7 @@ class DocumentService:
             for i, chunk_text in enumerate(chunks):
                 embedding = embedding_fn(chunk_text)
                 chunk = DocumentChunk(
-                    id=uuid.uuid4(),
+                    id=str(uuid.uuid4()),
                     document_id=document_id,
                     chunk_index=i,
                     content=chunk_text,

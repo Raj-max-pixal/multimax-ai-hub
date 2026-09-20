@@ -25,7 +25,7 @@ class StoredFileBase(BaseModel):
 class StoredFileCreate(StoredFileBase):
     """Schema for uploading a new file."""
 
-    workspace_id: Optional[int] = None
+    workspace_id: Optional[str] = None
 
 
 class StoredFileUpdate(BaseModel):
@@ -43,8 +43,8 @@ class StoredFileResponse(StoredFileBase):
     filename: str
     file_path: str
     storage_backend: str
-    user_id: Optional[int] = None
-    workspace_id: Optional[int] = None
+    user_id: Optional[str] = None
+    workspace_id: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -64,7 +64,7 @@ class StorageQuotaResponse(BaseModel):
     """Schema for storage quota information."""
 
     scope: str
-    scope_id: int
+    scope_id: str
     used_bytes: int
     max_bytes: int
     used_percent: float

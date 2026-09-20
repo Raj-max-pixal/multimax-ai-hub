@@ -8,8 +8,6 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-from uuid import UUID
-
 from pydantic import BaseModel, Field
 
 
@@ -21,14 +19,14 @@ from pydantic import BaseModel, Field
 class DocumentUploadRequest(BaseModel):
     """Metadata for a document upload."""
 
-    workspace_id: Optional[int] = Field(None, description="Workspace to associate the document with")
+    workspace_id: Optional[str] = Field(None, description="Workspace to associate the document with")
     filename: Optional[str] = Field(None, description="Override filename")
 
 
 class DocumentChatRequest(BaseModel):
     """Request to chat with a document using RAG."""
 
-    document_id: UUID = Field(..., description="Document ID to query")
+    document_id: str = Field(..., min_length=36, max_length=36, description="Document ID to query")
     query: str = Field(..., min_length=1, max_length=4096, description="User query")
     top_k: int = Field(5, ge=1, le=50, description="Number of chunks to retrieve")
     conversation_id: Optional[int] = Field(None, description="Conversation ID for context")
@@ -42,15 +40,15 @@ class DocumentChatRequest(BaseModel):
 class DocumentResponse(BaseModel):
     """Serialized document metadata."""
 
-    id: UUID
+    id: str
     filename: str
     original_filename: str
     file_size: int
     mime_type: Optional[str] = None
     status: str
     error_message: Optional[str] = None
-    workspace_id: Optional[int] = None
-    user_id: int
+    workspace_id: Optional[str] = None
+    user_id: str
     chunk_count: int
     created_at: datetime
     updated_at: datetime
@@ -78,8 +76,8 @@ class DocumentListResponse(BaseModel):
 class DocumentChunkResponse(BaseModel):
     """A single document chunk with relevance score."""
 
-    chunk_id: UUID
-    document_id: UUID
+    chunk_id: str
+    document_id: str
     chunk_index: int
     content: str
     score: float = Field(0.0, description="Relevance score from vector search")
@@ -110,7 +108,7 @@ class ChunkData(BaseModel):
 class DocumentIndexData(BaseModel):
     """Data needed to index a document."""
 
-    document_id: UUID
+    document_id: str
     chunks: List[ChunkData]
 
 

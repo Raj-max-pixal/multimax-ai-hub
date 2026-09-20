@@ -15,7 +15,11 @@ export default function Memory() {
   const { addToast } = useToast()
 
   const load = () => getMemories(query, filterCategory).then(data => setMemories(data.memories || [])).catch((e) => addToast(e.message, 'error'))
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    getMemories('', '')
+      .then(data => setMemories(data.memories || []))
+      .catch((e) => addToast(e.message, 'error'))
+  }, [addToast])
 
   const save = async () => {
     if (!content.trim()) return addToast('Write a memory first', 'error')

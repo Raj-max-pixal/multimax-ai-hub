@@ -32,8 +32,8 @@ def register(app: Any, container: Any) -> None:
     # Include the storage API router
     app.include_router(storage_router)
 
-    # Register storage service as a singleton in the DI container
-    container.register_singleton(StorageService, StorageService())
+    # StorageService is request-scoped because it owns an AsyncSession.
+    # FastAPI creates it through app.storage.dependencies.get_storage_service.
 
 
 __all__ = [

@@ -58,6 +58,12 @@ class User(Base):
 
     # Relationships
     refresh_tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
+    documents = relationship(
+        "Document",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        foreign_keys="Document.user_id",
+    )
 
     __table_args__ = (
         Index("idx_user_email", "email"),
