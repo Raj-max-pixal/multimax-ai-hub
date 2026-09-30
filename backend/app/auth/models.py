@@ -21,6 +21,7 @@ from sqlalchemy import (
     String,
     Text,
     Index,
+    func,
 )
 from sqlalchemy.orm import relationship
 
@@ -42,6 +43,7 @@ class User(Base):
     email = Column(String(255), unique=True, nullable=False, index=True)
     username = Column(String(100), unique=True, nullable=False, index=True)
     display_name = Column(String(255), default="")
+    bio = Column(Text, nullable=False, default="")
     hashed_password = Column(String(255), nullable=False)
     role = Column(Enum(UserRole), default=UserRole.USER, nullable=False)
     is_active = Column(Boolean, default=True, index=True)
@@ -54,6 +56,10 @@ class User(Base):
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    __table_args__ = (
+        Index("uq_users_username_lower", func.lower(username), unique=True),
     )
 
     # Relationships
@@ -71,6 +77,7 @@ class User(Base):
             "email": self.email,
             "username": self.username,
             "display_name": self.display_name,
+            "bio": self.bio or "",
             "role": self.role.value if self.role else "user",
             "is_active": self.is_active,
             "is_verified": self.is_verified,
@@ -86,6 +93,7 @@ class User(Base):
             "id": self.id,
             "username": self.username,
             "display_name": self.display_name,
+            "bio": self.bio or "",
             "avatar_url": self.avatar_url,
             "role": self.role.value if self.role else "user",
             "created_at": self.created_at.isoformat() if self.created_at else None,

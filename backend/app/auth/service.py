@@ -14,6 +14,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional, Tuple
 
 from sqlalchemy import select, func, delete
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -139,7 +140,7 @@ class AuthService:
             ValueError: If email or username already exists.
         """
         email = email.strip().lower()
-        username = username.strip()
+        username = username.strip().lower()
 
         async with self._db.session() as session:
             # Check existing email
@@ -151,7 +152,7 @@ class AuthService:
 
             # Check existing username
             existing = await session.execute(
-                select(User).where(User.username == username)
+                select(User).where(func.lower(User.username) == username)
             )
             if existing.scalar_one_or_none():
                 raise ValueError("Username already taken")
@@ -300,25 +301,44 @@ class AuthService:
         data: Dict[str, Any],
     ) -> Optional[Dict[str, Any]]:
         """Update user profile fields."""
-        allowed_fields = {"display_name", "avatar_url", "preferences"}
-        async with self._db.session() as session:
-            result = await session.execute(
-                select(User).where(User.id == user_id)
-            )
-            user = result.scalar_one_or_none()
-            if not user:
-                return None
+        allowed_fields = {"username", "display_name", "bio", "avatar_url", "preferences"}
+        try:
+            async with self._db.session() as session:
+                result = await session.execute(
+                    select(User).where(User.id == user_id)
+                )
+                user = result.scalar_one_or_none()
+                if not user:
+                    return None
 
-            for key, value in data.items():
-                if key in allowed_fields:
-                    if key == "preferences" and isinstance(value, dict):
+                for key, value in data.items():
+                    if key not in allowed_fields:
+                        continue
+                    if key == "username":
+                        normalized_username = str(value).strip().lower()
+                        existing = await session.execute(
+                            select(User.id).where(
+                                func.lower(User.username) == normalized_username,
+                                User.id != user_id,
+                            )
+                        )
+                        if existing.scalar_one_or_none():
+                            raise ValueError("That username is already taken")
+                        value = normalized_username
+                    elif key == "preferences" and isinstance(value, dict):
                         import json
-                        setattr(user, key, json.dumps(value))
-                    else:
-                        setattr(user, key, value)
+                        value = json.dumps(value)
+                    elif isinstance(value, str):
+                        value = value.strip()
+                    setattr(user, key, value)
 
-            session.add(user)
-            return user.to_dict()
+                session.add(user)
+                return user.to_dict()
+        except IntegrityError as exc:
+            # The functional unique index closes the race between the check and commit.
+            if "uq_users_username_lower" in str(exc).lower():
+                raise ValueError("That username is already taken") from exc
+            raise
 
     async def change_password(
         self,
@@ -362,13 +382,13 @@ class AuthService:
         """Verify username/email + password combo."""
         # Try username first, then email
         result = await session.execute(
-            select(User).where(User.username == username)
+            select(User).where(func.lower(User.username) == username.strip().lower())
         )
         user = result.scalar_one_or_none()
 
         if not user:
             result = await session.execute(
-                select(User).where(User.email == username)
+                select(User).where(func.lower(User.email) == username.strip().lower())
             )
             user = result.scalar_one_or_none()
 

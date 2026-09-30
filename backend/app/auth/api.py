@@ -40,6 +40,7 @@ def _user_to_response(user_dict: Dict[str, Any]) -> Dict[str, Any]:
         "email": user_dict.get("email", ""),
         "username": user_dict.get("username", ""),
         "display_name": user_dict.get("display_name", ""),
+        "bio": user_dict.get("bio", ""),
         "role": user_dict.get("role", "user"),
         "is_active": user_dict.get("is_active", True),
         "is_verified": user_dict.get("is_verified", False),
@@ -175,7 +176,7 @@ async def get_me(
     "/me",
     response_model=Dict[str, Any],
     summary="Update current user profile",
-    description="Update display name, avatar URL, or preferences.",
+    description="Update username, display name, About text, avatar URL, or preferences.",
 )
 async def update_me(
     data: UserUpdate,
@@ -184,8 +185,12 @@ async def update_me(
 ):
     """Update the current user's profile."""
     update_dict = {}
+    if data.username is not None:
+        update_dict["username"] = data.username
     if data.display_name is not None:
         update_dict["display_name"] = data.display_name
+    if data.bio is not None:
+        update_dict["bio"] = data.bio
     if data.avatar_url is not None:
         update_dict["avatar_url"] = data.avatar_url
     if data.preferences is not None:
@@ -197,7 +202,13 @@ async def update_me(
             detail="No fields to update",
         )
 
-    updated = await auth_service.update_user(current_user["id"], update_dict)
+    try:
+        updated = await auth_service.update_user(current_user["id"], update_dict)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
     if not updated:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

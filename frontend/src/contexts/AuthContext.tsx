@@ -20,6 +20,7 @@ export interface AuthUser {
   email: string
   username: string
   display_name: string
+  bio: string
   role: string
   is_active: boolean
   is_verified: boolean
@@ -49,6 +50,7 @@ function mapProfileToUser(p: UserProfile): AuthUser {
     email: p.email,
     username: p.username,
     display_name: p.display_name,
+    bio: p.bio ?? '',
     role: p.role,
     is_active: p.is_active,
     is_verified: p.is_verified,
@@ -146,15 +148,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // updateProfile
   // ------------------------------------------------------------------ //
   const updateProfile = useCallback(async (data: Partial<AuthUser>) => {
-    try {
-      const updated = await updateUserApi({
-        display_name: data.display_name,
-        avatar_url: data.avatar_url,
-      })
-      setUser(mapProfileToUser(updated))
-    } catch (err) {
-      console.error('Failed to update profile:', err)
-    }
+    const updated = await updateUserApi({
+      username: data.username,
+      display_name: data.display_name,
+      bio: data.bio,
+      avatar_url: data.avatar_url,
+    })
+    setUser(mapProfileToUser(updated))
   }, [])
 
   // ------------------------------------------------------------------ //

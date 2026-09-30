@@ -5,6 +5,7 @@ export interface UserProfile {
   email: string;
   username: string;
   display_name: string;
+  bio: string;
   role: string;
   is_active: boolean;
   is_verified: boolean;
@@ -67,7 +68,9 @@ export async function getCurrentUser(): Promise<UserProfile> {
 }
 
 export async function updateCurrentUser(payload: {
+  username?: string;
   display_name?: string;
+  bio?: string;
   avatar_url?: string;
 }): Promise<UserProfile> {
   const response = await apiJson<ApiUserResponse>("/auth/me", {
