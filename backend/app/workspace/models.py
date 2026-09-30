@@ -67,10 +67,6 @@ class Workspace(Base):
     chat_sessions = relationship("ChatSession", back_populates="workspace", cascade="all, delete-orphan")
     documents = relationship("Document", back_populates="workspace", cascade="all, delete-orphan")
 
-    __table_args__ = (
-        Index("idx_workspace_owner", "owner_id"),
-    )
-
     def to_dict(self) -> Dict[str, Any]:
         return {
             "id": self.id,
@@ -140,10 +136,6 @@ class Project(Base):
     # Relationships
     workspace = relationship("Workspace", back_populates="projects")
     files = relationship("ProjectFile", back_populates="project", cascade="all, delete-orphan")
-
-    __table_args__ = (
-        Index("idx_project_workspace", "workspace_id"),
-    )
 
     def to_dict(self) -> Dict[str, Any]:
         return {

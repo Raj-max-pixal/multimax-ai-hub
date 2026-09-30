@@ -23,6 +23,7 @@ wheels/
 
 # Environment
 .env
+.vercel/
 .venv
 env/
 venv/
@@ -38,6 +39,9 @@ ENV/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local verification databases
+*-migration-test.db
 
 # Build
 dist/

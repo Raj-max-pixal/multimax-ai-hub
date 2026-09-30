@@ -65,11 +65,6 @@ class User(Base):
         foreign_keys="Document.user_id",
     )
 
-    __table_args__ = (
-        Index("idx_user_email", "email"),
-        Index("idx_user_username", "username"),
-    )
-
     def to_dict(self) -> Dict[str, Any]:
         return {
             "id": self.id,
@@ -113,11 +108,6 @@ class RefreshToken(Base):
     # Relationships
     user = relationship("User", back_populates="refresh_tokens")
 
-    __table_args__ = (
-        Index("idx_refresh_token_user", "user_id"),
-        Index("idx_refresh_token_hash", "token_hash"),
-    )
-
     def to_dict(self) -> Dict[str, Any]:
         return {
             "id": self.id,
@@ -147,11 +137,6 @@ class UserSession(Base):
     # Relationships
     user = relationship("User")
     refresh_token = relationship("RefreshToken")
-
-    __table_args__ = (
-        Index("idx_user_session_user", "user_id"),
-        Index("idx_user_session_token", "session_token"),
-    )
 
     def to_dict(self) -> Dict[str, Any]:
         return {

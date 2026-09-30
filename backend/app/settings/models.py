@@ -31,10 +31,6 @@ class SystemSetting(Base):
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
-    __table_args__ = (
-        Index("idx_system_setting_key", "key"),
-    )
-
 
 class UserSetting(Base):
     """Per-user configuration setting."""

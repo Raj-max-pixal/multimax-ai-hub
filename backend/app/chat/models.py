@@ -73,8 +73,6 @@ class ChatSession(Base):
     )
 
     __table_args__ = (
-        Index("idx_chat_session_workspace", "workspace_id"),
-        Index("idx_chat_session_created_by", "created_by"),
         Index("idx_chat_session_deleted", "deleted_at"),
     )
 
@@ -123,7 +121,6 @@ class Message(Base):
     )
 
     __table_args__ = (
-        Index("idx_message_session", "session_id"),
         Index("idx_message_created", "session_id", "created_at"),
     )
 
@@ -161,10 +158,6 @@ class Attachment(Base):
 
     # Relationships
     message = relationship("Message", back_populates="attachments")
-
-    __table_args__ = (
-        Index("idx_attachment_message", "message_id"),
-    )
 
     def to_dict(self) -> Dict[str, Any]:
         return {
