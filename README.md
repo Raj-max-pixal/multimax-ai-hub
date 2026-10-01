@@ -268,6 +268,20 @@ Multimax AI Hub builds upon the incredible work of the open-source community:
 - [Vercel AI SDK](https://github.com/vercel/ai)
 
 ---
+ScreenShots 
+1. 
+<img width="1919" height="842" alt="image" src="https://github.com/user-attachments/assets/e7dbe71d-7249-427e-a8d8-3475447d7fdf" />
+
+<img width="1919" height="846" alt="image" src="https://github.com/user-attachments/assets/6e212c41-f245-4b80-a5d0-0fdcfcf264ef" />
+
+<img width="1902" height="847" alt="image" src="https://github.com/user-attachments/assets/47b5f09d-973e-4fe2-9940-1331e00a80ce" />
+
+<img width="1919" height="844" alt="image" src="https://github.com/user-attachments/assets/e6d1e858-b0c3-4eaa-b605-bc3e34a66614" />
+
+<img width="1906" height="812" alt="image" src="https://github.com/user-attachments/assets/e55dd945-66a2-4f2d-9b71-d29fbde08df5" />
+
+<img width="1919" height="840" alt="image" src="https://github.com/user-attachments/assets/8d2d4369-fe7f-47b4-b283-38c0d3b1e0b7" />
+
 
 <div align="center">
   <sub>Built with ❤️ by the Multimax team. </sub>

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { lazy, Suspense, useState, useRef, useEffect, useCallback } from 'react'
 import {
   Send,
   Plus,
@@ -23,13 +23,13 @@ import {
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { motion, AnimatePresence } from 'framer-motion'
 import { chatWithOllama, filterEmptyChatMessages, getOllamaModels, uploadDocument } from '../lib/api'
 import { useToast } from '../contexts/ToastContext'
 import { cn } from '../lib/utils'
 import type { Message, Conversation, ChatAttachment } from '../types'
+
+const CodeBlock = lazy(() => import('../components/CodeBlock'))
 
 type Persona = {
   id: string
@@ -94,6 +94,8 @@ export default function AIChat() {
   const [showPrompts, setShowPrompts] = useState(false)
   const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([])
   const [abortController, setAbortController] = useState<AbortController | null>(null)
+  const generationLockRef = useRef(false)
+  const activeControllerRef = useRef<AbortController | null>(null)
   const [isRenaming, setIsRenaming] = useState<string | null>(null)
   const [renameInput, setRenameInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -112,11 +114,25 @@ export default function AIChat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [currentConversation?.messages, isStreaming])
 
+  useEffect(() => () => {
+    activeControllerRef.current?.abort()
+  }, [])
+
   useEffect(() => {
     const loadModels = async () => {
       try {
         const data = await getOllamaModels()
-        if (data.models) setModels(data.models)
+        if (data.models?.length) {
+          setModels(data.models)
+          // Hosted deployments may have no local Ollama service. Prefer the
+          // configured hosted Gemini model instead of the offline local default.
+          setSelectedModel(current => {
+            const hostedModel = data.models.find(model => model.name.startsWith('gemini-'))
+            return current.startsWith('gemini-') && data.models.some(model => model.name === current)
+              ? current
+              : hostedModel?.name ?? (data.models.some(model => model.name === current) ? current : data.models[0].name)
+          })
+        }
       } catch (e) {
         console.log('Using default models')
       }
@@ -187,26 +203,6 @@ export default function AIChat() {
     setEditingMessageId(msg.id)
     setEditInput(msg.content)
   }, [])
-
-  const saveEdit = useCallback(async () => {
-    if (!currentConversationId || !editingMessageId) return
-    setConversations(prev => prev.map(c => {
-      if (c.id === currentConversationId) {
-        const idx = c.messages.findIndex(m => m.id === editingMessageId)
-        if (idx !== -1) {
-          const newMessages = [...c.messages.slice(0, idx), {
-            ...c.messages[idx],
-            content: editInput
-          }, ...c.messages.slice(idx + 1)]
-          return { ...c, messages: newMessages }
-        }
-      }
-      return c
-    }))
-    setEditingMessageId(null)
-    setEditInput('')
-    addToast('Message updated', 'success')
-  }, [currentConversationId, editingMessageId, editInput, addToast])
 
   const clearChat = useCallback(() => {
     if (!currentConversationId) return
@@ -293,23 +289,37 @@ export default function AIChat() {
   }
 
   const regenerateResponse = async () => {
-    if (!currentConversation || currentConversation.messages.length < 1) return
-    const lastUserMessage = [...currentConversation.messages].reverse().find(m => m.role === 'user')
-    if (!lastUserMessage) return
-    const messagesWithoutLastAI = currentConversation.messages.slice(0, -1)
+    if (!currentConversation || currentConversation.messages.length < 1 || generationLockRef.current) return
+    let lastUserIndex = currentConversation.messages.length - 1
+    while (lastUserIndex >= 0 && currentConversation.messages[lastUserIndex].role !== 'user') {
+      lastUserIndex -= 1
+    }
+    if (lastUserIndex < 0) return
+
+    const lastUserMessage = currentConversation.messages[lastUserIndex]
+    const messagesBeforeLastTurn = currentConversation.messages.slice(0, lastUserIndex)
     setConversations(prev => prev.map(c => {
       if (c.id === currentConversationId) {
-        return { ...c, messages: messagesWithoutLastAI }
+        return { ...c, messages: messagesBeforeLastTurn }
       }
       return c
     }))
-    setInput(lastUserMessage.content)
-    setTimeout(() => handleSubmit(), 100)
+    void handleSubmit(undefined, {
+      content: lastUserMessage.content,
+      attachments: lastUserMessage.attachments || [],
+      priorMessages: messagesBeforeLastTurn,
+    })
   }
 
-  const handleSubmit = async (e?: React.FormEvent) => {
+  const handleSubmit = async (
+    e?: React.FormEvent,
+    replay?: { content: string; attachments: ChatAttachment[]; priorMessages: Message[] },
+  ) => {
     e?.preventDefault()
-    if ((!input.trim() && pendingAttachments.length === 0) || isLoading) return
+    const submittedText = replay?.content ?? input
+    const attachments = replay?.attachments ?? pendingAttachments
+    if ((!submittedText.trim() && attachments.length === 0) || isLoading || generationLockRef.current) return
+    generationLockRef.current = true
 
     // Ensure we have a conversation BEFORE proceeding
     let activeConversationId = currentConversationId
@@ -317,7 +327,7 @@ export default function AIChat() {
       const newId = Date.now().toString()
       const newConversation: Conversation = {
         id: newId,
-        title: input.trim().slice(0, 30) + (input.trim().length > 30 ? '...' : ''),
+        title: submittedText.trim().slice(0, 30) + (submittedText.trim().length > 30 ? '...' : ''),
         messages: [],
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -334,9 +344,9 @@ export default function AIChat() {
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: input.trim() || 'Please analyze the attached file(s).',
+      content: submittedText.trim() || 'Please analyze the attached file(s).',
       timestamp: new Date().toISOString(),
-      attachments: pendingAttachments
+      attachments
     }
     const assistantMessage: Message = {
       id: (Date.now() + 1).toString(),
@@ -353,7 +363,7 @@ export default function AIChat() {
           if (c.id === activeConversationId) {
             return {
               ...c,
-              messages: [...c.messages, userMessage, assistantMessage],
+              messages: [...(replay?.priorMessages ?? c.messages), userMessage, assistantMessage],
               updated_at: new Date().toISOString()
             }
           }
@@ -368,13 +378,14 @@ export default function AIChat() {
     setIsLoading(true)
     setIsStreaming(true)
     const controller = new AbortController()
+    activeControllerRef.current = controller
     setAbortController(controller)
 
     try {
       // Build messages array from localStorage to avoid stale closures
       const stored = JSON.parse(localStorage.getItem('multimax_conversations') || '[]')
       const activeConv = stored.find((c: Conversation) => c.id === activeConversationId)
-      const conversationMessages = activeConv?.messages || []
+      const conversationMessages = replay?.priorMessages ?? activeConv?.messages ?? []
       
       // Get the latest input (userMessage was already created above and captures the value before setInput(''))
       const attachmentContext = userMessage.attachments?.length ? '\n\nAttached files:\n' + userMessage.attachments.map(file => '- ' + file.name + ' (' + file.type + ', ' + formatFileSize(file.size) + ')' + (file.documentId ? ', document id: ' + file.documentId : '')).join('\n') : ''
@@ -384,33 +395,34 @@ export default function AIChat() {
         { role: 'user' as const, content: userMessage.content + attachmentContext }
       ])
       
-      console.log('Sending request to backend:', { model: selectedModel, messagesCount: messages.length })
-      console.log('Full request payload:', JSON.stringify({ model: selectedModel, messages }))
+      console.info('Sending chat request', { model: selectedModel, messagesCount: messages.length })
       
       const response = await chatWithOllama(selectedModel, messages, controller.signal)
-      console.log('Response status:', response.status, response.statusText)
       
       if (!response.ok) {
-        const errorBody = await response.text()
-        console.error('Response error body:', errorBody)
-        throw new Error(`Server returned ${response.status}: ${response.statusText}. Body: ${errorBody}`)
+        let detail = `The AI service returned ${response.status}. Please try again.`
+        try {
+          const payload = await response.json()
+          detail = payload.detail || payload.message || detail
+        } catch { /* Keep the safe status message for non-JSON errors. */ }
+        throw new Error(detail)
       }
       
       const reader = response.body?.getReader()
       const decoder = new TextDecoder()
       let fullResponse = ''
+      let streamError = ''
       let buffer = '' // Accumulate partial JSON lines across chunks
       
       if (reader) {
-        while (true) {
+        for (;;) {
           const { done, value } = await reader.read()
           if (done) {
             // Process any remaining data in buffer
             if (buffer.trim()) {
-              console.log('Processing remaining buffer:', buffer)
               try {
                 const data = JSON.parse(buffer)
-                console.log('Parsed remaining buffer data:', data)
+                if (data.error) streamError = String(data.error)
                 if (data.message?.content) {
                   fullResponse += data.message.content
                   setConversations(prev => prev.map(c => {
@@ -427,16 +439,14 @@ export default function AIChat() {
                     return c
                   }))
                 }
-              } catch (e) {
-                console.error('Failed to parse remaining buffer:', e, 'buffer:', buffer)
+              } catch {
+                console.warn('Chat stream ended with an incomplete response frame')
               }
             }
             break
           }
           
           const chunk = decoder.decode(value, { stream: true })
-          console.log('Raw chunk received:', chunk.length > 200 ? chunk.substring(0, 200) + '...' : chunk)
-          
           buffer += chunk
           const lines = buffer.split('\n')
           
@@ -447,7 +457,7 @@ export default function AIChat() {
             if (line.trim()) {
               try {
                 const data = JSON.parse(line)
-                console.log('Parsed line data:', data)
+                if (data.error) streamError = String(data.error)
                 
                 if (data.message?.content) {
                   fullResponse += data.message.content
@@ -464,19 +474,15 @@ export default function AIChat() {
                     }
                     return c
                   }))
-                } else if (data.done) {
-                  console.log('Streaming complete. Full response:', fullResponse)
-                } else {
-                  console.log('Unexpected response format:', data)
                 }
-              } catch (e) {
-                console.error('Chunk parse error:', e, 'line:', line)
+              } catch {
+                console.warn('Ignoring malformed chat stream frame')
               }
             }
           }
         }
       }
-      console.log('Final full AI response:', fullResponse)
+      if (streamError) throw new Error(streamError)
       
       // If we got an empty response, show a clear error
       if (!fullResponse && !controller.signal.aborted) {
@@ -498,9 +504,17 @@ export default function AIChat() {
         }))
       }
     } catch (error: any) {
-      console.error('Request failed:', error)
-      if (error.name !== 'AbortError') {
-        const errorMessage = error.response?.data?.detail || error.message || 'Failed to get response'
+      if (controller.signal.aborted || error.name === 'AbortError') {
+        setConversations(prev => prev.map(c => c.id === activeConversationId
+          ? {
+              ...c,
+              messages: c.messages.map(m => m.id === assistantMessage.id
+                ? { ...m, content: m.content.trim() ? `${m.content}\n\n_(Generation stopped)_` : 'Generation stopped.' }
+                : m),
+            }
+          : c))
+      } else {
+        const errorMessage = error.message || 'Failed to get response. Please retry.'
         addToast(errorMessage, 'error')
         setConversations(prev => prev.map(c => {
           if (c.id === activeConversationId) {
@@ -520,11 +534,48 @@ export default function AIChat() {
       setIsLoading(false)
       setIsStreaming(false)
       setAbortController(null)
+      if (activeControllerRef.current === controller) activeControllerRef.current = null
+      generationLockRef.current = false
     }
   }
 
   const stopGeneration = () => {
-    abortController?.abort()
+    (activeControllerRef.current || abortController)?.abort()
+  }
+
+  const saveEdit = useCallback(() => {
+    if (!currentConversation || !currentConversationId || !editingMessageId || isLoading) return
+    const editedText = editInput.trim()
+    if (!editedText) {
+      addToast('A message cannot be empty', 'error')
+      return
+    }
+    const messageIndex = currentConversation.messages.findIndex(message => message.id === editingMessageId)
+    const message = currentConversation.messages[messageIndex]
+    if (!message || message.role !== 'user') return
+
+    const priorMessages = currentConversation.messages.slice(0, messageIndex)
+    setEditingMessageId(null)
+    setEditInput('')
+    void handleSubmit(undefined, {
+      content: editedText,
+      attachments: message.attachments || [],
+      priorMessages,
+    })
+  }, [currentConversation, currentConversationId, editingMessageId, editInput, isLoading, addToast])
+
+  const retryFailedResponse = (assistantMessageId: string) => {
+    if (!currentConversation || generationLockRef.current || isLoading) return
+    const assistantIndex = currentConversation.messages.findIndex(message => message.id === assistantMessageId)
+    const userIndex = assistantIndex - 1
+    const failedUserMessage = currentConversation.messages[userIndex]
+    if (assistantIndex < 0 || failedUserMessage?.role !== 'user') return
+
+    void handleSubmit(undefined, {
+      content: failedUserMessage.content,
+      attachments: failedUserMessage.attachments || [],
+      priorMessages: currentConversation.messages.slice(0, userIndex),
+    })
   }
 
   const filteredConversations = conversations.filter(c => {
@@ -760,7 +811,7 @@ export default function AIChat() {
               <div
                 key={msg.id}
                 className={cn(
-                  'flex gap-4 max-w-4xl',
+                  'group flex gap-4 max-w-4xl',
                   msg.role === 'user' ? 'ml-auto flex-row-reverse' : 'mr-auto'
                 )}
               >
@@ -819,31 +870,21 @@ export default function AIChat() {
                             </div>
                           ))}
                         </div>
-                      ) : null}                      {msg.role === 'assistant' ? (
+                      ) : null}                      {msg.role === 'assistant' && msg.content.startsWith('Error:') ? (
+                        <div role="alert" className="rounded-xl border border-red-300/70 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+                          {msg.content.slice('Error:'.length).trim()}
+                        </div>
+                      ) : msg.role === 'assistant' ? (
                         <div className="prose prose-slate dark:prose-invert max-w-none">
                           <ReactMarkdown
                             remarkPlugins={[remarkGfm]}
                             components={{
-                              code({ node, inline, className, children, ...props }: any) {
+                            code({ node: _node, inline, className, children, ...props }: any) {
                                 const match = /language-(\w+)/.exec(className || '')
                                 return !inline && match ? (
-                                  <div className="relative my-2">
-                                    <SyntaxHighlighter
-                                      style={vscDarkPlus}
-                                      language={match[1]}
-                                      PreTag="div"
-                                      className="rounded-xl"
-                                      {...props}
-                                    >
-                                      {String(children).replace(/\n$/, '')}
-                                    </SyntaxHighlighter>
-                                    <button
-                                      onClick={() => copyToClipboard(String(children))}
-                                      className="absolute top-2 right-2 p-1.5 bg-slate-800/80 hover:bg-slate-700 rounded-lg text-slate-300 hover:text-white transition-all"
-                                    >
-                                      <Copy className="w-4 h-4" />
-                                    </button>
-                                  </div>
+                                  <Suspense fallback={<pre className="my-2 overflow-x-auto rounded-xl bg-slate-900 p-4 text-sm text-slate-100"><code>{String(children).replace(/\n$/, '')}</code></pre>}>
+                                    <CodeBlock language={match[1]} code={String(children).replace(/\n$/, '')} onCopy={copyToClipboard} />
+                                  </Suspense>
                                 ) : (
                                   <code className={cn('bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded text-sm', className)} {...props}>
                                     {children}
@@ -860,8 +901,8 @@ export default function AIChat() {
                       )}
                     </div>
                   )}
-                  {!isLoading && !editingMessageId && (
-                    <div className="flex gap-1 mt-2 justify-start">
+                  {!isLoading && !editingMessageId && msg.content !== '' && (
+                    <div className="mt-1 flex gap-1 justify-start opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
                       <button
                         onClick={() => copyToClipboard(msg.content)}
                         className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500"
@@ -878,15 +919,15 @@ export default function AIChat() {
                           <Edit className="w-4 h-4" />
                         </button>
                       )}
-                      {msg.role === 'assistant' && (
-                        <button
-                          onClick={regenerateResponse}
-                          className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500"
-                          title="Regenerate"
-                        >
+                      {msg.role === 'assistant' && (msg.content.startsWith('Error:') ? (
+                        <button onClick={() => retryFailedResponse(msg.id)} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500" title="Retry response" aria-label="Retry response">
                           <RotateCcw className="w-4 h-4" />
                         </button>
-                      )}
+                      ) : (
+                        <button onClick={regenerateResponse} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500" title="Regenerate" aria-label="Regenerate response">
+                          <RotateCcw className="w-4 h-4" />
+                        </button>
+                      ))}
                       <button
                         onClick={() => deleteMessage(msg.id)}
                         className="p-1.5 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg text-slate-500 hover:text-red-500"
@@ -905,7 +946,8 @@ export default function AIChat() {
               <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center">
                 <Bot className="w-5 h-5 text-white" />
               </div>
-              <div className="bg-slate-100 dark:bg-slate-800 rounded-2xl px-4 py-3">
+              <div aria-live="polite" className="bg-slate-100 dark:bg-slate-800 rounded-2xl px-4 py-3">
+                <div className="mb-2 text-xs text-slate-500">Thinking · generating response</div>
                 <div className="flex gap-2">
                   <div className="w-2.5 h-2.5 bg-green-500 rounded-full animate-bounce" />
                   <div className="w-2.5 h-2.5 bg-green-500 rounded-full animate-bounce" style={{ animationDelay: '0.15s' }} />
@@ -970,11 +1012,12 @@ export default function AIChat() {
                 <button
                   type="button"
                   onClick={stopGeneration}
+                  aria-label="Stop generating"
                   className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-xl font-medium transition-all flex items-center gap-2"
                 > 
                 
                   <Square className="w-4 h-4" />
-                  Stop
+                  Stop generating
                 </button>
               ) : (
                 <button

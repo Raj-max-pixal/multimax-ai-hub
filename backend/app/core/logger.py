@@ -10,6 +10,7 @@ import json
 import logging
 import sys
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 from app.core.config import Settings
@@ -74,6 +75,10 @@ def setup_logging(settings: Settings) -> None:
         try:
             from logging.handlers import RotatingFileHandler
 
+            Path(settings.LOG_FILE).expanduser().parent.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
             file_handler = RotatingFileHandler(
                 settings.LOG_FILE,
                 maxBytes=settings.LOG_MAX_BYTES,

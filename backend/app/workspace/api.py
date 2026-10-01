@@ -11,19 +11,11 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+from app.auth.dependencies import get_current_user_id
 from app.workspace.models import Workspace, WorkspaceMember, WorkspaceRole, Project
 from app.workspace.service import WorkspaceService
 
 router = APIRouter(prefix="/api/v1/workspaces", tags=["workspaces"])
-
-
-# Stub auth dependency - will be replaced with real auth in Phase 1
-async def get_current_user_id() -> str:
-    """Temporary stub for authentication.
-
-    TODO: Replace with actual auth dependency in Phase 1.
-    """
-    return "system"
 
 
 def get_workspace_service() -> WorkspaceService:
@@ -78,7 +70,7 @@ async def get_workspace(
     service: WorkspaceService = Depends(get_workspace_service),
 ):
     """Get a workspace by ID."""
-    workspace = await service.get_workspace(workspace_id)
+    workspace = await service.get_workspace_for_user(workspace_id, user_id)
     if not workspace:
         raise HTTPException(status_code=404, detail="Workspace not found")
     return workspace.to_dict()

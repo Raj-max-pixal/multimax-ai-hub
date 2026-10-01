@@ -6,11 +6,9 @@ Provides CRUD operations for StoredFile and StorageQuota records.
 
 from __future__ import annotations
 
-import math
-from typing import Optional, Sequence
-from uuid import UUID
+from typing import Optional
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logger import get_logger
@@ -45,11 +43,42 @@ class StoredFileRepository:
             raise FileNotFoundError_(file_id)
         return record
 
+    async def get_by_id_for_user_or_raise(self, file_id: str, user_id: str) -> StoredFile:
+        """Fetch a file only when it belongs to the requesting user."""
+        result = await self.session.execute(
+            select(StoredFile).where(
+                StoredFile.id == file_id,
+                StoredFile.user_id == user_id,
+            )
+        )
+        record = result.scalar_one_or_none()
+        if record is None:
+            # Do not reveal whether another user's file ID exists.
+            raise FileNotFoundError_(file_id)
+        return record
+
+    async def get_downloadable_file_or_raise(
+        self,
+        file_id: str,
+        user_id: Optional[str],
+    ) -> StoredFile:
+        """Allow the owner or anyone for files explicitly marked public."""
+        access_filter = StoredFile.is_public.is_(True)
+        if user_id is not None:
+            access_filter = or_(StoredFile.user_id == user_id, access_filter)
+        result = await self.session.execute(
+            select(StoredFile).where(StoredFile.id == file_id, access_filter)
+        )
+        record = result.scalar_one_or_none()
+        if record is None:
+            raise FileNotFoundError_(file_id)
+        return record
+
     async def get_by_user(
         self,
-        user_id: int,
+        user_id: str,
         *,
-        workspace_id: Optional[int] = None,
+        workspace_id: Optional[str] = None,
         page: int = 1,
         page_size: int = 20,
     ) -> tuple[list[StoredFile], int]:
@@ -98,13 +127,13 @@ class StoredFileRepository:
         await self.session.flush()
         logger.info(f"Deleted stored file record {file_id}")
 
-    async def count_by_user(self, user_id: int) -> int:
+    async def count_by_user(self, user_id: str) -> int:
         """Count total files owned by a user."""
         query = select(func.count(StoredFile.id)).where(StoredFile.user_id == user_id)
         result = await self.session.execute(query)
         return result.scalar() or 0
 
-    async def total_bytes_by_user(self, user_id: int) -> int:
+    async def total_bytes_by_user(self, user_id: str) -> int:
         """Sum total file bytes owned by a user."""
         query = select(func.sum(StoredFile.file_size_bytes)).where(StoredFile.user_id == user_id)
         result = await self.session.execute(query)
@@ -117,7 +146,7 @@ class StorageQuotaRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def get_quota(self, scope: str, scope_id: int) -> Optional[StorageQuota]:
+    async def get_quota(self, scope: str, scope_id: str) -> Optional[StorageQuota]:
         """Fetch a quota record by scope and scope_id."""
         query = select(StorageQuota).where(
             StorageQuota.scope == scope,
@@ -126,7 +155,7 @@ class StorageQuotaRepository:
         result = await self.session.execute(query)
         return result.scalar_one_or_none()
 
-    async def get_or_create_quota(self, scope: str, scope_id: int, max_bytes: int = 500 * 1024 * 1024) -> StorageQuota:
+    async def get_or_create_quota(self, scope: str, scope_id: str, max_bytes: int = 500 * 1024 * 1024) -> StorageQuota:
         """Get existing quota record or create a default one."""
         quota = await self.get_quota(scope, scope_id)
         if quota is not None:
@@ -142,21 +171,21 @@ class StorageQuotaRepository:
         logger.debug(f"Created storage quota for {scope}:{scope_id}")
         return quota
 
-    async def add_bytes(self, scope: str, scope_id: int, bytes_to_add: int) -> StorageQuota:
+    async def add_bytes(self, scope: str, scope_id: str, bytes_to_add: int) -> StorageQuota:
         """Add bytes to the used count for a given quota."""
         quota = await self.get_or_create_quota(scope, scope_id)
         quota.used_bytes += bytes_to_add
         await self.session.flush()
         return quota
 
-    async def subtract_bytes(self, scope: str, scope_id: int, bytes_to_subtract: int) -> StorageQuota:
+    async def subtract_bytes(self, scope: str, scope_id: str, bytes_to_subtract: int) -> StorageQuota:
         """Subtract bytes from the used count for a given quota."""
         quota = await self.get_or_create_quota(scope, scope_id)
         quota.used_bytes = max(0, quota.used_bytes - bytes_to_subtract)
         await self.session.flush()
         return quota
 
-    async def recalculate(self, scope: str, scope_id: int) -> StorageQuota:
+    async def recalculate(self, scope: str, scope_id: str) -> StorageQuota:
         """Recalculate used_bytes from actual stored file records."""
         if scope == "user":
             query = select(func.coalesce(func.sum(StoredFile.file_size_bytes), 0)).where(

@@ -10,8 +10,14 @@ from app.core.exceptions import MultimaxError
 class StorageError(MultimaxError):
     """Base exception for all storage-related errors."""
 
-    def __init__(self, message: str = "Storage operation failed", details: dict = None):
-        super().__init__(message=message, code="STORAGE_ERROR", status_code=500, details=details)
+    def __init__(
+        self,
+        message: str = "Storage operation failed",
+        details: dict = None,
+        code: str = "STORAGE_ERROR",
+        status_code: int = 500,
+    ):
+        super().__init__(message=message, code=code, status_code=status_code, details=details)
 
 
 class FileNotFoundError_(StorageError):
@@ -19,10 +25,10 @@ class FileNotFoundError_(StorageError):
 
     def __init__(self, path: str = ""):
         super().__init__(
-            message=f"File not found: {path}",
-            code="FILE_NOT_FOUND",
+            message="File not found",
+            details={},
+            code="NOT_FOUND",
             status_code=404,
-            details={"path": path},
         )
 
 

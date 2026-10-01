@@ -20,7 +20,7 @@ setup: ## Install all dependencies
 
 dev-backend: ## Start the backend development server
 	@echo "🚀 Starting backend server at http://localhost:8000"
-	cd backend && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+	cd backend && uvicorn app.main:create_app --factory --reload --host 0.0.0.0 --port 8000
 
 dev-frontend: ## Start the frontend development server
 	@echo "🚀 Starting frontend at http://localhost:5173"
@@ -72,14 +72,14 @@ build-frontend: ## Build frontend for production
 build: build-backend build-frontend ## Build everything
 
 migrate: ## Run database migrations
-	cd backend && alembic upgrade head
+	cd backend && python -m alembic -c migrations/alembic.ini upgrade head
 
 migrate-new: ## Create a new migration (usage: make migrate-new msg="description")
-	cd backend && alembic revision --autogenerate -m "$(msg)"
+	cd backend && python -m alembic -c migrations/alembic.ini revision --autogenerate -m "$(msg)"
 
 db-shell: ## Open database shell
 	@echo "Opening database shell..."
-	cd backend && python -c "from app.core.database import get_session; print('Database session available')"
+	cd backend && python -c "from app.core.database import get_database; print(get_database())"
 
 clean: ## Clean build artifacts and caches
 	@echo "🧹 Cleaning..."

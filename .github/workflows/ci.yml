@@ -123,9 +123,12 @@ jobs:
       - name: Run tests
         env:
           DATABASE_URL: postgresql+asyncpg://multii:multii_test@localhost:5432/multii_test
-          ENVIRONMENT: test
-          LOG_LEVEL: ERROR
+          APP_ENV: test
+          APP_DEBUG: 'false'
+          APP_LOG_LEVEL: ERROR
         run: |
+          python -m alembic -c migrations/alembic.ini upgrade head
+          python -m alembic -c migrations/alembic.ini check
           python -m pytest tests/ -v --asyncio-mode=auto
 
   test-frontend:

@@ -65,6 +65,7 @@ class UserResponse(BaseModel):
     email: str
     username: str
     display_name: str
+    bio: str = ""
     role: str
     is_active: bool
     is_verified: bool
@@ -75,9 +76,26 @@ class UserResponse(BaseModel):
 
 class UserUpdate(BaseModel):
     """User profile update schema."""
+    username: Optional[str] = Field(
+        None,
+        min_length=3,
+        max_length=100,
+        pattern=r"^[a-zA-Z0-9_.-]+$",
+    )
     display_name: Optional[str] = Field(None, max_length=255)
+    bio: Optional[str] = Field(None, max_length=160)
     avatar_url: Optional[str] = Field(None, max_length=512)
     preferences: Optional[Dict[str, Any]] = None
+
+    @field_validator("username")
+    @classmethod
+    def normalize_username(cls, value: Optional[str]) -> Optional[str]:
+        return value.strip().lower() if value is not None else None
+
+    @field_validator("display_name", "bio", "avatar_url")
+    @classmethod
+    def trim_profile_text(cls, value: Optional[str]) -> Optional[str]:
+        return value.strip() if value is not None else None
 
 
 class PasswordChange(BaseModel):

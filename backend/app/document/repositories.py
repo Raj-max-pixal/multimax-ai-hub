@@ -8,8 +8,6 @@ from __future__ import annotations
 
 import json
 from typing import Any, Dict, List, Optional, Sequence
-from uuid import UUID
-
 from sqlalchemy import Text, and_, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,12 +31,12 @@ class DocumentRepository:
         logger.debug(f"Created document record {document.id}")
         return document
 
-    async def get_by_id(self, document_id: UUID) -> Optional[DocumentRecord]:
+    async def get_by_id(self, document_id: str) -> Optional[DocumentRecord]:
         """Fetch a document by its UUID."""
         result = await self.session.get(DocumentRecord, document_id)
         return result
 
-    async def get_by_id_or_raise(self, document_id: UUID) -> DocumentRecord:
+    async def get_by_id_or_raise(self, document_id: str) -> DocumentRecord:
         """Fetch a document or raise DocumentNotFoundError."""
         doc = await self.get_by_id(document_id)
         if doc is None:
@@ -47,9 +45,9 @@ class DocumentRepository:
 
     async def get_by_user(
         self,
-        user_id: int,
+        user_id: str,
         *,
-        workspace_id: Optional[int] = None,
+        workspace_id: Optional[str] = None,
         page: int = 1,
         page_size: int = 20,
     ) -> tuple[list[DocumentRecord], int]:
@@ -77,7 +75,7 @@ class DocumentRepository:
 
     async def update_status(
         self,
-        document_id: UUID,
+        document_id: str,
         status: str,
         *,
         error_message: Optional[str] = None,
@@ -93,7 +91,7 @@ class DocumentRepository:
         await self.session.flush()
         return doc
 
-    async def delete(self, document_id: UUID) -> None:
+    async def delete(self, document_id: str) -> None:
         """Delete a document and its associated chunks."""
         doc = await self.get_by_id_or_raise(document_id)
         await self.session.delete(doc)
@@ -114,7 +112,7 @@ class DocumentChunkRepository:
         logger.debug(f"Created {len(chunks)} chunks")
         return chunks
 
-    async def get_by_document(self, document_id: UUID) -> Sequence[DocumentChunk]:
+    async def get_by_document(self, document_id: str) -> Sequence[DocumentChunk]:
         """Fetch all chunks for a document, ordered by index."""
         query = (
             select(DocumentChunk)
@@ -124,7 +122,7 @@ class DocumentChunkRepository:
         result = await self.session.execute(query)
         return result.scalars().all()
 
-    async def get_by_id(self, chunk_id: UUID) -> Optional[DocumentChunk]:
+    async def get_by_id(self, chunk_id: str) -> Optional[DocumentChunk]:
         """Fetch a single chunk by ID."""
         result = await self.session.get(DocumentChunk, chunk_id)
         return result
@@ -134,7 +132,7 @@ class DocumentChunkRepository:
         query_embedding: list[float],
         *,
         top_k: int = 5,
-        workspace_id: Optional[int] = None,
+        workspace_id: Optional[str] = None,
     ) -> list[tuple[DocumentChunk, float]]:
         """Perform cosine similarity search using embeddings.
 
@@ -180,7 +178,7 @@ class DocumentChunkRepository:
             return 0.0
         return dot / (norm_a * norm_b)
 
-    async def delete_by_document(self, document_id: UUID) -> None:
+    async def delete_by_document(self, document_id: str) -> None:
         """Delete all chunks for a document."""
         query = select(DocumentChunk).where(DocumentChunk.document_id == document_id)
         result = await self.session.execute(query)
@@ -202,7 +200,7 @@ class DocumentShareRepository:
         await self.session.flush()
         return share
 
-    async def get_shares_for_document(self, document_id: UUID) -> Sequence[DocumentShare]:
+    async def get_shares_for_document(self, document_id: str) -> Sequence[DocumentShare]:
         """Get all shares for a document."""
         query = select(DocumentShare).where(DocumentShare.document_id == document_id)
         result = await self.session.execute(query)

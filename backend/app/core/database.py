@@ -79,12 +79,20 @@ class DatabaseManager:
             logger.info(f"SQLite database path: {db_path.absolute()}")
 
         try:
-            self._engine = create_async_engine(
-                db_url,
-                echo=self._settings.APP_DEBUG,
-                poolclass=NullPool,
-                pool_pre_ping=is_postgres,
-            )
+            engine_options = {
+                "echo": self._settings.APP_DEBUG,
+                "pool_pre_ping": is_postgres,
+            }
+            if is_postgres:
+                engine_options.update(
+                    pool_size=self._settings.DATABASE_POOL_SIZE,
+                    max_overflow=self._settings.DATABASE_MAX_OVERFLOW,
+                    pool_timeout=self._settings.DATABASE_POOL_TIMEOUT_SECONDS,
+                )
+            else:
+                engine_options["poolclass"] = NullPool
+
+            self._engine = create_async_engine(db_url, **engine_options)
 
             self._session_factory = async_sessionmaker(
                 bind=self._engine,

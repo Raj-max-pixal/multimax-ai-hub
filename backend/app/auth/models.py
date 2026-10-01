@@ -21,6 +21,7 @@ from sqlalchemy import (
     String,
     Text,
     Index,
+    func,
 )
 from sqlalchemy.orm import relationship
 
@@ -42,6 +43,7 @@ class User(Base):
     email = Column(String(255), unique=True, nullable=False, index=True)
     username = Column(String(100), unique=True, nullable=False, index=True)
     display_name = Column(String(255), default="")
+    bio = Column(Text, nullable=False, default="")
     hashed_password = Column(String(255), nullable=False)
     role = Column(Enum(UserRole), default=UserRole.USER, nullable=False)
     is_active = Column(Boolean, default=True, index=True)
@@ -56,12 +58,17 @@ class User(Base):
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
+    __table_args__ = (
+        Index("uq_users_username_lower", func.lower(username), unique=True),
+    )
+
     # Relationships
     refresh_tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
-
-    __table_args__ = (
-        Index("idx_user_email", "email"),
-        Index("idx_user_username", "username"),
+    documents = relationship(
+        "Document",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        foreign_keys="Document.user_id",
     )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -70,6 +77,7 @@ class User(Base):
             "email": self.email,
             "username": self.username,
             "display_name": self.display_name,
+            "bio": self.bio or "",
             "role": self.role.value if self.role else "user",
             "is_active": self.is_active,
             "is_verified": self.is_verified,
@@ -85,6 +93,7 @@ class User(Base):
             "id": self.id,
             "username": self.username,
             "display_name": self.display_name,
+            "bio": self.bio or "",
             "avatar_url": self.avatar_url,
             "role": self.role.value if self.role else "user",
             "created_at": self.created_at.isoformat() if self.created_at else None,
@@ -106,11 +115,6 @@ class RefreshToken(Base):
 
     # Relationships
     user = relationship("User", back_populates="refresh_tokens")
-
-    __table_args__ = (
-        Index("idx_refresh_token_user", "user_id"),
-        Index("idx_refresh_token_hash", "token_hash"),
-    )
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -141,11 +145,6 @@ class UserSession(Base):
     # Relationships
     user = relationship("User")
     refresh_token = relationship("RefreshToken")
-
-    __table_args__ = (
-        Index("idx_user_session_user", "user_id"),
-        Index("idx_user_session_token", "session_token"),
-    )
 
     def to_dict(self) -> Dict[str, Any]:
         return {

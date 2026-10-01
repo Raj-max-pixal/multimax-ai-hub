@@ -52,8 +52,8 @@ class StorageService:
         original_filename: str,
         content_type: Optional[str] = None,
         file_size: int = 0,
-        user_id: int,
-        workspace_id: Optional[int] = None,
+        user_id: str,
+        workspace_id: Optional[str] = None,
         is_public: bool = False,
         metadata_json: Optional[dict[str, Any]] = None,
     ) -> StoredFile:
@@ -120,22 +120,30 @@ class StorageService:
         logger.info(f"Uploaded file {created.id} ({original_filename}, {file_size} bytes)")
         return created
 
-    async def get_file(self, file_id: str) -> StoredFile:
-        """Fetch a file record by ID (raises if not found)."""
-        return await self.file_repo.get_by_id_or_raise(file_id)
+    async def get_file(self, file_id: str, user_id: str) -> StoredFile:
+        """Fetch a file record owned by the requesting user."""
+        return await self.file_repo.get_by_id_for_user_or_raise(file_id, user_id)
 
-    async def get_file_path(self, file_id: str) -> str:
-        """Get the on-disk path for a file, verifying it exists."""
-        record = await self.file_repo.get_by_id_or_raise(file_id)
+    async def get_downloadable_file(
+        self,
+        file_id: str,
+        user_id: Optional[str],
+    ) -> StoredFile:
+        """Fetch an owned file or a file explicitly marked public."""
+        return await self.file_repo.get_downloadable_file_or_raise(file_id, user_id)
+
+    async def get_file_path(self, file_id: str, user_id: Optional[str]) -> str:
+        """Get an owned or explicitly public file path, verifying it exists."""
+        record = await self.get_downloadable_file(file_id, user_id)
         if not os.path.exists(record.file_path):
             raise FileNotFoundError_(file_id)
         return record.file_path
 
     async def list_files(
         self,
-        user_id: int,
+        user_id: str,
         *,
-        workspace_id: Optional[int] = None,
+        workspace_id: Optional[str] = None,
         page: int = 1,
         page_size: int = 20,
     ) -> tuple[list[StoredFile], int]:
@@ -147,9 +155,9 @@ class StorageService:
             page_size=page_size,
         )
 
-    async def delete_file(self, file_id: str) -> None:
-        """Delete a file record and its on-disk file."""
-        record = await self.file_repo.get_by_id_or_raise(file_id)
+    async def delete_file(self, file_id: str, user_id: str) -> None:
+        """Delete a file only when it belongs to the requesting user."""
+        record = await self.file_repo.get_by_id_for_user_or_raise(file_id, user_id)
 
         # Remove from disk
         if os.path.exists(record.file_path):
@@ -168,7 +176,7 @@ class StorageService:
         if workspace_id:
             await self.quota_repo.subtract_bytes("workspace", workspace_id, file_size)
 
-    async def get_storage_info(self, user_id: int) -> dict[str, Any]:
+    async def get_storage_info(self, user_id: str) -> dict[str, Any]:
         """Get storage summary for a user."""
         total_files = await self.file_repo.count_by_user(user_id)
         total_bytes = await self.file_repo.total_bytes_by_user(user_id)
@@ -190,7 +198,7 @@ class StorageService:
             "quota": quota_data,
         }
 
-    async def _check_quota(self, scope: str, scope_id: int, additional_bytes: int) -> None:
+    async def _check_quota(self, scope: str, scope_id: str, additional_bytes: int) -> None:
         """Raise QuotaExceededError if adding bytes would exceed the limit."""
         quota = await self.quota_repo.get_or_create_quota(scope, scope_id)
         if quota.used_bytes + additional_bytes > quota.max_bytes:

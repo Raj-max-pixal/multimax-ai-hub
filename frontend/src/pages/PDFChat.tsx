@@ -76,20 +76,20 @@ export default function PDFChat() {
     setIsDragging(false)
   }, [])
 
-  const handleDrop = useCallback(async (e: React.DragEvent) => {
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault()
     setIsDragging(false)
     const files = Array.from(e.dataTransfer.files)
     await handleFileUpload(files)
-  }, [])
+  }
 
-  const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
     if (files.length > 0) {
       await handleFileUpload(files)
       e.target.value = ''
     }
-  }, [])
+  }
 
   const handleFileUpload = async (files: File[]) => {
     try {
@@ -178,7 +178,7 @@ export default function PDFChat() {
       let fullContent = ''
       
       if (reader) {
-        while (true) {
+        for (;;) {
           const { done, value } = await reader.read()
           if (done) break
           
@@ -402,7 +402,7 @@ export default function PDFChat() {
                         <ReactMarkdown
                           remarkPlugins={[remarkGfm]}
                           components={{
-                            code({ node, inline, className, children, ...props }: any) {
+                              code({ node: _node, inline, className, children, ...props }: any) {
                               const match = /language-(\w+)/.exec(className || "")
                               return !inline && match ? (
                                 <div className="relative my-2">

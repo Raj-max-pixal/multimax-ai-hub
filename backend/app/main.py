@@ -7,6 +7,7 @@ domain modules, middleware, and infrastructure services.
 
 from __future__ import annotations
 
+import json
 import os
 from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator, Dict, List, Optional
@@ -66,8 +67,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Initialize database
     await app_state.database.initialize()
 
-    # Create all tables (development auto-migration)
-    await app_state.database.create_all()
+    # Import every ORM model before resolving foreign keys and creating tables.
+    _load_domain_models()
+
+    # Local SQLite can bootstrap itself for a low-friction developer experience.
+    # PostgreSQL and every deployed environment must use reviewed Alembic migrations.
+    if settings.database_auto_create:
+        await app_state.database.create_all()
+    else:
+        logger.info("Automatic schema creation disabled; expecting Alembic-managed schema")
 
     # Start event bus
     await app_state.event_bus.start()
@@ -87,6 +95,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # --- Shutdown ---
     logger.info("Shutting down...")
+    if app_state.ai_manager:
+        await app_state.ai_manager.close()
     await app_state.event_bus.stop()
     await app_state.database.close()
     logger.info("Shutdown complete")
@@ -95,8 +105,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 def _init_ai_manager(app_state: AppState) -> Any:
     """Initialize the AI Manager with configured providers."""
     from app.ai.manager import AIManager
+    from app.ai.providers.gemini import GeminiProvider
     from app.ai.providers.ollama import OllamaProvider
-    from app.ai.providers.openai import OpenAIProvider
     from app.ai.provider_registry import ProviderRegistry
 
     registry = ProviderRegistry()
@@ -114,16 +124,32 @@ def _init_ai_manager(app_state: AppState) -> Any:
     from app.ai.base import ProviderConfig as ProviderConfigCls
 
     provider = OllamaProvider(ProviderConfigCls(**ollama_config))
-    registry.register(provider)
+    registry.register("ollama", provider, make_default=True)
 
-    # Future: conditionally register OpenAI, Gemini, Qwen here
+    if app_state.settings.GEMINI_API_KEY:
+        gemini = GeminiProvider(
+            ProviderConfigCls(
+                name="gemini",
+                display_name="Google Gemini",
+                api_key=app_state.settings.GEMINI_API_KEY,
+                default_model="gemini-3.6-flash",
+                models=[
+                    "gemini-3.6-flash",
+                    "gemini-3.5-flash-lite",
+                    "gemini-3.1-pro-preview",
+                ],
+                timeout=60,
+            )
+        )
+        registry.register("gemini", gemini)
+        logger.info("Gemini provider enabled")
 
     return AIManager(registry=registry)
 
 
 def _load_domain_modules(app: FastAPI, app_state: AppState) -> None:
     """Import and register all domain modules."""
-    domain_module_packages = ["app.auth", "app.workspace", "app.chat", "app.document", "app.settings", "app.storage"]
+    domain_module_packages = ["app.auth", "app.workspace", "app.chat", "app.document", "app.settings", "app.storage", "app.coding"]
 
     for package_name in domain_module_packages:
         try:
@@ -143,6 +169,22 @@ def _load_domain_modules(app: FastAPI, app_state: AppState) -> None:
                 logger.warning(f"Module '{package_name}' has no register() function")
         except Exception as e:
             logger.error(f"Failed to load module '{package_name}': {e}", exc_info=True)
+
+
+def _load_domain_models() -> None:
+    """Populate SQLAlchemy metadata before schema creation."""
+    import importlib
+
+    model_modules = [
+        "app.auth.models",
+        "app.workspace.models",
+        "app.chat.models",
+        "app.document.models",
+        "app.settings.models",
+        "app.storage.models",
+    ]
+    for module_name in model_modules:
+        importlib.import_module(module_name)
 
 
 def _warn_default_secrets(settings: Settings) -> None:
@@ -168,11 +210,13 @@ def _warn_default_secrets(settings: Settings) -> None:
 def _setup_middleware(app: FastAPI, settings: Settings) -> None:
     """Configure application middleware."""
     # CORS — use the property which returns List[str]
-    origins = settings.cors_origins
+    origins = [origin for origin in settings.cors_origins if origin]
+    if settings.APP_ENV.lower() == "production" and (not origins or "*" in origins):
+        raise RuntimeError("Production CORS must list explicit frontend origins")
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=origins or ["*"],
+        allow_origins=origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -213,7 +257,11 @@ def _setup_legacy_endpoints(app: FastAPI) -> None:
             try:
                 models = await app_state.ai_manager.list_models()
                 model_list = [
-                    {"name": f"{m.name}:latest" if ":" not in m.name else m.name}
+                    {
+                        "name": m.id
+                        if m.id.startswith("gemini-")
+                        else (f"{m.name}:latest" if ":" not in m.name else m.name)
+                    }
                     for m in models
                 ]
                 return {"models": model_list}
@@ -244,6 +292,7 @@ def _setup_legacy_endpoints(app: FastAPI) -> None:
             raise HTTPException(status_code=422, detail="At least one non-empty message is required")
 
         app_state: AppState = getattr(app.state, "multimax", None)
+        provider_name = "gemini" if str(model).lower().startswith("gemini-") else None
 
         if app_state and app_state.ai_manager:
             try:
@@ -256,16 +305,41 @@ def _setup_legacy_endpoints(app: FastAPI) -> None:
 
                 if stream:
                     async def stream_response():
-                        async for token in app_state.ai_manager.stream(gen_request):
-                            yield token
+                        try:
+                            async for token in app_state.ai_manager.stream(
+                                gen_request,
+                                provider_name=provider_name,
+                            ):
+                                yield json.dumps(
+                                    {
+                                        "message": {
+                                            "role": "assistant",
+                                            "content": token,
+                                        },
+                                        "done": False,
+                                    }
+                                ) + "\n"
+                        except Exception as error:
+                            logger.exception("AI stream failed")
+                            yield json.dumps({"error": f"AI response failed: {error}"}) + "\n"
+                            return
+                        yield json.dumps({"done": True}) + "\n"
 
-                    return StreamingResponse(stream_response(), media_type="application/json")
+                    return StreamingResponse(
+                        stream_response(),
+                        media_type="application/x-ndjson",
+                    )
                 else:
-                    response = await app_state.ai_manager.generate(gen_request)
+                    response = await app_state.ai_manager.generate(
+                        gen_request,
+                        provider_name=provider_name,
+                    )
                     return JSONResponse(content={"message": {"content": response.content}})
 
             except Exception as e:
                 logger.error(f"AI Manager chat error: {e}")
+                if provider_name == "gemini":
+                    raise HTTPException(status_code=502, detail=f"Gemini chat failed: {e}")
                 # Fall through to direct Ollama call
 
         # Fallback: direct Ollama call
@@ -437,13 +511,24 @@ def _setup_legacy_endpoints(app: FastAPI) -> None:
         """Legacy-compatible health check."""
         app_state: AppState = getattr(app.state, "multimax", None)
         ollama_status = "disconnected"
+        gemini_status = "disabled"
         if app_state and app_state.ai_manager:
             try:
                 health = await app_state.ai_manager.health_check("ollama")
-                ollama_status = "connected" if health.available else "disconnected"
+                ollama_status = (
+                    "connected" if health["ollama"].available else "disconnected"
+                )
             except Exception:
                 pass
-        return {"status": "healthy", "ollama": ollama_status}
+            if "gemini" in app_state.ai_manager.get_provider_names():
+                # Keep this frequently-polled endpoint fast; provider connectivity
+                # is checked by the dedicated AI health path.
+                gemini_status = "configured"
+        return {
+            "status": "healthy",
+            "ollama": ollama_status,
+            "gemini": gemini_status,
+        }
 
 
 # --------------------------------------------------------------------------- #
