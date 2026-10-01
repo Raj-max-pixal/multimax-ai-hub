@@ -120,13 +120,21 @@ class StorageService:
         logger.info(f"Uploaded file {created.id} ({original_filename}, {file_size} bytes)")
         return created
 
-    async def get_file(self, file_id: str) -> StoredFile:
-        """Fetch a file record by ID (raises if not found)."""
-        return await self.file_repo.get_by_id_or_raise(file_id)
+    async def get_file(self, file_id: str, user_id: str) -> StoredFile:
+        """Fetch a file record owned by the requesting user."""
+        return await self.file_repo.get_by_id_for_user_or_raise(file_id, user_id)
 
-    async def get_file_path(self, file_id: str) -> str:
-        """Get the on-disk path for a file, verifying it exists."""
-        record = await self.file_repo.get_by_id_or_raise(file_id)
+    async def get_downloadable_file(
+        self,
+        file_id: str,
+        user_id: Optional[str],
+    ) -> StoredFile:
+        """Fetch an owned file or a file explicitly marked public."""
+        return await self.file_repo.get_downloadable_file_or_raise(file_id, user_id)
+
+    async def get_file_path(self, file_id: str, user_id: Optional[str]) -> str:
+        """Get an owned or explicitly public file path, verifying it exists."""
+        record = await self.get_downloadable_file(file_id, user_id)
         if not os.path.exists(record.file_path):
             raise FileNotFoundError_(file_id)
         return record.file_path
@@ -147,9 +155,9 @@ class StorageService:
             page_size=page_size,
         )
 
-    async def delete_file(self, file_id: str) -> None:
-        """Delete a file record and its on-disk file."""
-        record = await self.file_repo.get_by_id_or_raise(file_id)
+    async def delete_file(self, file_id: str, user_id: str) -> None:
+        """Delete a file only when it belongs to the requesting user."""
+        record = await self.file_repo.get_by_id_for_user_or_raise(file_id, user_id)
 
         # Remove from disk
         if os.path.exists(record.file_path):

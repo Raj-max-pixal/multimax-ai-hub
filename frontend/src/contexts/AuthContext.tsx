@@ -5,6 +5,7 @@ import { createContext, useContext, useEffect, useState, useCallback } from 'rea
   logoutUser,
   getCurrentUser,
   updateCurrentUser as updateUserApi,
+  uploadProfileAvatar as uploadAvatarApi,
   resetPassword as resetPasswordApi,
   updatePassword as updatePasswordApi,
   type UserProfile,
@@ -34,6 +35,7 @@ interface AuthContextType {
   signUp: (email: string, username: string, password: string, display_name?: string) => Promise<{ error: Error | null }>
   signOut: () => Promise<void>
   updateProfile: (data: Partial<AuthUser>) => Promise<void>
+  uploadAvatar: (file: File) => Promise<string>
   resetPassword: (email: string) => Promise<{ error: Error | null }>
   updatePassword: (token: string, password: string) => Promise<{ error: Error | null }>
 }
@@ -157,6 +159,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(mapProfileToUser(updated))
   }, [])
 
+  const uploadAvatar = useCallback((file: File) => uploadAvatarApi(file), [])
+
   // ------------------------------------------------------------------ //
   // resetPassword
   // ------------------------------------------------------------------ //
@@ -190,6 +194,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         signUp,
         signOut,
         updateProfile,
+        uploadAvatar,
         resetPassword,
         updatePassword,
       }}

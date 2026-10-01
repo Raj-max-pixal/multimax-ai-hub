@@ -124,6 +124,7 @@ class Settings(BaseSettings):
     SUPABASE_URL: Optional[str] = Field(default=None, alias="SUPABASE_URL")
     SUPABASE_KEY: Optional[str] = Field(default=None, alias="SUPABASE_KEY")
     SUPABASE_SERVICE_KEY: Optional[str] = Field(default=None, alias="SUPABASE_SERVICE_KEY")
+    SUPABASE_PROFILE_BUCKET: str = Field(default="profile-avatars", alias="SUPABASE_PROFILE_BUCKET")
 
     # --- Authentication ---
     AUTH_SECRET_KEY: str = Field(default="change-me-to-another-random-secret", alias="AUTH_SECRET_KEY")

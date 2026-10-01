@@ -67,6 +67,15 @@ class WorkspaceService:
             )
             return result.scalar_one_or_none()
 
+    async def get_workspace_for_user(self, workspace_id: str, user_id: str) -> Optional[Workspace]:
+        """Get a workspace only when the user is a member."""
+        async with self._db.session() as session:
+            membership = await self._check_membership(session, workspace_id, user_id)
+            if not membership:
+                return None
+            result = await session.execute(select(Workspace).where(Workspace.id == workspace_id))
+            return result.scalar_one_or_none()
+
     async def get_user_workspaces(
         self, user_id: str, skip: int = 0, limit: int = 50
     ) -> tuple[List[Workspace], int]:

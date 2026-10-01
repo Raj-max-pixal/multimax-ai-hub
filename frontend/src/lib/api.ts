@@ -1,4 +1,5 @@
 const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "/api";
+import { apiFetch, apiJson } from "./api-client";
 
 function toUrl(path: string): string {
   return `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
@@ -33,6 +34,124 @@ export type CodingTask =
   | "review";
 
 export type ResearchMode = "web" | "deep" | "academic" | "news" | "fact-check" | "report";
+
+export type CodingWorkspace = { id: string; name: string };
+export type CodingProject = { id: string; workspace_id: string; name: string; description?: string };
+export type CodingProjectFile = { path: string; size_bytes: number; mime_type: string };
+export type CodingProposal = {
+  mode: "patch";
+  path: string;
+  summary: string;
+  diff: string;
+  proposed_content: string;
+  original_sha256: string;
+};
+export type ProjectGitStatus = {
+  is_git_repository: boolean;
+  state: "not_connected" | "clean" | "dirty";
+  branch: string | null;
+  repository_url: string | null;
+  provider: string | null;
+  default_branch: string | null;
+  modified_files: string[];
+  untracked_files: string[];
+  staged_files: string[];
+  deleted_files: string[];
+};
+export type TerminalCapabilities = { available: boolean; reason: string | null; allowed_commands: string[]; test_runner: string | null };
+export type TerminalRunResult = { command: string; stdout: string; stderr: string; exit_code: number; duration_ms: number; timed_out: boolean; test_runner?: string };
+
+export async function getCodingWorkspaces(): Promise<{ items: CodingWorkspace[] }> {
+  return apiJson("/v1/coding/workspaces");
+}
+
+export async function getCodingProjects(workspaceId: string): Promise<{ items: CodingProject[] }> {
+  return apiJson(`/v1/workspaces/${encodeURIComponent(workspaceId)}/projects`);
+}
+
+export async function getCodingProjectFiles(projectId: string, query = ""): Promise<{ items: CodingProjectFile[] }> {
+  return apiJson(`/v1/coding/projects/${encodeURIComponent(projectId)}/files?q=${encodeURIComponent(query)}`);
+}
+
+export async function searchCodingProjectContent(projectId: string, query: string): Promise<{ items: { path: string; line: number; snippet: string }[] }> {
+  return apiJson(`/v1/coding/projects/${encodeURIComponent(projectId)}/search?q=${encodeURIComponent(query)}`);
+}
+
+export async function readCodingProjectFile(projectId: string, path: string): Promise<{ path: string; content: string; sha256: string; size_bytes: number }> {
+  return apiJson(`/v1/coding/projects/${encodeURIComponent(projectId)}/file?path=${encodeURIComponent(path)}`);
+}
+
+export async function uploadCodingProjectFile(projectId: string, file: File, path: string): Promise<void> {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("path", path);
+  const response = await apiFetch(`/v1/coding/projects/${encodeURIComponent(projectId)}/files`, { method: "POST", body: formData });
+  if (!response.ok) throw new Error((await response.json().catch(() => ({}))).detail || `Upload failed (${response.status})`);
+}
+
+export async function runProjectCodingAction(payload: {
+  project_id: string;
+  mode: "explain" | "suggest" | "patch";
+  prompt: string;
+  path?: string;
+  selected_code?: string;
+  history?: { role: string; content: string }[];
+  model?: string;
+}): Promise<{ mode: "explain" | "suggest"; answer: string } | CodingProposal> {
+  return apiJson(`/v1/coding/projects/${encodeURIComponent(payload.project_id)}/assist`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+  });
+}
+
+export async function applyProjectCodingPatch(projectId: string, proposal: CodingProposal): Promise<void> {
+  await apiJson(`/v1/coding/projects/${encodeURIComponent(projectId)}/apply`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path: proposal.path, content: proposal.proposed_content, original_sha256: proposal.original_sha256 }),
+  });
+}
+
+export async function connectProjectGit(projectId: string, repositoryUrl: string, defaultBranch: string): Promise<ProjectGitStatus> {
+  return apiJson(`/v1/coding/projects/${encodeURIComponent(projectId)}/git/connect`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ repository_url: repositoryUrl, default_branch: defaultBranch }),
+  });
+}
+
+export async function getProjectGitStatus(projectId: string): Promise<ProjectGitStatus> {
+  return apiJson(`/v1/coding/projects/${encodeURIComponent(projectId)}/git/status`);
+}
+
+export async function getProjectGitDiff(projectId: string): Promise<{ is_git_repository: boolean; diff: string; truncated: boolean }> {
+  return apiJson(`/v1/coding/projects/${encodeURIComponent(projectId)}/git/diff`);
+}
+
+export async function suggestProjectCommitMessage(projectId: string, model: string): Promise<{ message: string }> {
+  return apiJson(`/v1/coding/projects/${encodeURIComponent(projectId)}/git/commit-message`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model }),
+  });
+}
+
+export async function createProjectGitCommit(projectId: string, message: string, confirmed: boolean): Promise<{ commit: string; message: string }> {
+  return apiJson(`/v1/coding/projects/${encodeURIComponent(projectId)}/git/commit`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message, confirmed }),
+  });
+}
+
+export async function getProjectTerminalCapabilities(projectId: string): Promise<TerminalCapabilities> {
+  return apiJson(`/v1/coding/projects/${encodeURIComponent(projectId)}/terminal/capabilities`);
+}
+
+export async function runProjectTerminalCommand(projectId: string, argv: string[], signal?: AbortSignal): Promise<TerminalRunResult> {
+  return apiJson(`/v1/coding/projects/${encodeURIComponent(projectId)}/terminal/run`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ argv }), signal,
+  });
+}
+
+export async function runProjectTests(projectId: string, signal?: AbortSignal): Promise<TerminalRunResult> {
+  return apiJson(`/v1/coding/projects/${encodeURIComponent(projectId)}/terminal/tests`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, signal,
+  });
+}
 
 export function filterEmptyChatMessages(messages: ChatMessageInput[]): ChatMessageInput[] {
   return messages.filter((msg) => msg.content.trim().length > 0);

@@ -7,9 +7,12 @@ All routes are prefixed with /api/auth.
 
 from __future__ import annotations
 
+import uuid
 from typing import Any, Dict
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException, status, Body
+import httpx
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
 from app.auth.schemas import (
     UserCreate,
@@ -23,6 +26,7 @@ from app.auth.schemas import (
 from app.auth.service import AuthService
 from app.auth.dependencies import get_current_user, get_current_admin_user
 from app.core.container import get_container
+from app.core.config import get_settings
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -220,6 +224,71 @@ async def update_me(
         "message": "Profile updated",
         "user": _user_to_response(updated),
     }
+
+
+@router.post(
+    "/me/avatar",
+    response_model=Dict[str, Any],
+    summary="Upload profile photo",
+    status_code=status.HTTP_200_OK,
+)
+async def upload_profile_avatar(
+    file: UploadFile = File(...),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Upload a validated image to the private Supabase Storage API."""
+    settings = get_settings()
+    if not settings.SUPABASE_URL or not settings.SUPABASE_SERVICE_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Profile photo storage is not configured",
+        )
+
+    mime_to_extension = {
+        "image/jpeg": ("jpg", lambda data: data.startswith(b"\xff\xd8\xff")),
+        "image/png": ("png", lambda data: data.startswith(b"\x89PNG\r\n\x1a\n")),
+        "image/webp": ("webp", lambda data: len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP"),
+    }
+    content_type = (file.content_type or "").split(";")[0].strip().lower()
+    image_type = mime_to_extension.get(content_type)
+    if not image_type:
+        raise HTTPException(status_code=415, detail="Choose a JPEG, PNG, or WebP image")
+
+    content = await file.read(5 * 1024 * 1024 + 1)
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Profile photos must be 5 MB or smaller")
+    extension, signature_matches = image_type
+    if not signature_matches(content):
+        raise HTTPException(status_code=415, detail="The uploaded file is not a valid image")
+
+    bucket = settings.SUPABASE_PROFILE_BUCKET
+    object_path = f"{current_user['id']}/{uuid.uuid4().hex}.{extension}"
+    base_url = settings.SUPABASE_URL.rstrip("/")
+    object_url = (
+        f"{base_url}/storage/v1/object/{quote(bucket, safe='')}/"
+        f"{quote(object_path, safe='/')}"
+    )
+    headers = {
+        "apikey": settings.SUPABASE_SERVICE_KEY,
+        "Authorization": f"Bearer {settings.SUPABASE_SERVICE_KEY}",
+        "Content-Type": content_type,
+        "x-upsert": "false",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(object_url, content=content, headers=headers)
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="Profile photo storage is unavailable") from exc
+
+    if response.status_code not in (200, 201):
+        # Do not return the provider response, which could contain implementation details.
+        raise HTTPException(status_code=502, detail="Profile photo upload failed")
+
+    public_url = (
+        f"{base_url}/storage/v1/object/public/{quote(bucket, safe='')}/"
+        f"{quote(object_path, safe='/')}"
+    )
+    return {"success": True, "avatar_url": public_url}
 
 
 @router.post(

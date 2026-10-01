@@ -1,4 +1,4 @@
-import { apiJson, clearTokens, setTokens } from "./api-client";
+import { apiFetch, apiJson, clearTokens, setTokens } from "./api-client";
 
 export interface UserProfile {
   id: string;
@@ -79,6 +79,18 @@ export async function updateCurrentUser(payload: {
     body: JSON.stringify(payload),
   });
   return response.user;
+}
+
+export async function uploadProfileAvatar(file: File): Promise<string> {
+  const form = new FormData();
+  form.append("file", file);
+  const response = await apiFetch("/auth/me/avatar", { method: "POST", body: form });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data?.detail || `Profile photo upload failed (${response.status})`);
+  }
+  const result = (await response.json()) as { avatar_url: string };
+  return result.avatar_url;
 }
 
 export async function resetPassword(email: string): Promise<void> {

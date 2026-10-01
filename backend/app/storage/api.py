@@ -11,7 +11,11 @@ from typing import Optional
 from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 from fastapi.responses import FileResponse
 
-from app.storage.dependencies import get_current_user_id, get_storage_service
+from app.storage.dependencies import (
+    get_current_user_id,
+    get_optional_user_id,
+    get_storage_service,
+)
 from app.storage.schemas import StoredFileListResponse, StoredFileResponse, StorageInfoResponse
 from app.storage.service import StorageService
 
@@ -72,21 +76,23 @@ async def list_files(
 @router.get("/files/{file_id}", response_model=StoredFileResponse)
 async def get_file(
     file_id: str,
+    user_id: str = Depends(get_current_user_id),
     storage: StorageService = Depends(get_storage_service),
 ) -> StoredFileResponse:
-    """Get metadata for a specific file."""
-    record = await storage.get_file(file_id)
+    """Get metadata for a file owned by the authenticated user."""
+    record = await storage.get_file(file_id, user_id)
     return StoredFileResponse.model_validate(record)
 
 
 @router.get("/files/{file_id}/download")
 async def download_file(
     file_id: str,
+    user_id: Optional[str] = Depends(get_optional_user_id),
     storage: StorageService = Depends(get_storage_service),
 ) -> FileResponse:
-    """Download a file by its ID."""
-    file_path = await storage.get_file_path(file_id)
-    record = await storage.get_file(file_id)
+    """Download an owned file or an explicitly public file."""
+    file_path = await storage.get_file_path(file_id, user_id)
+    record = await storage.get_downloadable_file(file_id, user_id)
     return FileResponse(
         path=file_path,
         filename=record.original_filename,
@@ -97,10 +103,11 @@ async def download_file(
 @router.delete("/files/{file_id}")
 async def delete_file(
     file_id: str,
+    user_id: str = Depends(get_current_user_id),
     storage: StorageService = Depends(get_storage_service),
 ) -> dict[str, str]:
-    """Delete a file and its record."""
-    await storage.delete_file(file_id)
+    """Delete a file owned by the authenticated user."""
+    await storage.delete_file(file_id, user_id)
     return {"message": "File deleted successfully"}
 
 

@@ -1,0 +1,36 @@
+services:
+  - type: web
+    name: multimax-ai-hub-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    preDeployCommand: python -m alembic -c migrations/alembic.ini upgrade head
+    startCommand: uvicorn app.main:create_app --factory --host 0.0.0.0 --port $PORT --workers 2
+    healthCheckPath: /health/ready
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: "false"
+      - key: DATABASE_AUTO_CREATE
+        value: "false"
+      - key: DATABASE_POOL_SIZE
+        value: "3"
+      - key: DATABASE_MAX_OVERFLOW
+        value: "2"
+      - key: API_CORS_ORIGINS
+        value: https://multimax-ai-hub.vercel.app
+      - key: APP_SECRET_KEY
+        generateValue: true
+      - key: AUTH_SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: SUPABASE_PROFILE_BUCKET
+        value: profile-avatars
+      - key: GEMINI_API_KEY
+        sync: false

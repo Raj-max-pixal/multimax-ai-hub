@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logger import get_logger
@@ -39,6 +39,37 @@ class StoredFileRepository:
     async def get_by_id_or_raise(self, file_id: str) -> StoredFile:
         """Fetch a stored file or raise FileNotFoundError_."""
         record = await self.get_by_id(file_id)
+        if record is None:
+            raise FileNotFoundError_(file_id)
+        return record
+
+    async def get_by_id_for_user_or_raise(self, file_id: str, user_id: str) -> StoredFile:
+        """Fetch a file only when it belongs to the requesting user."""
+        result = await self.session.execute(
+            select(StoredFile).where(
+                StoredFile.id == file_id,
+                StoredFile.user_id == user_id,
+            )
+        )
+        record = result.scalar_one_or_none()
+        if record is None:
+            # Do not reveal whether another user's file ID exists.
+            raise FileNotFoundError_(file_id)
+        return record
+
+    async def get_downloadable_file_or_raise(
+        self,
+        file_id: str,
+        user_id: Optional[str],
+    ) -> StoredFile:
+        """Allow the owner or anyone for files explicitly marked public."""
+        access_filter = StoredFile.is_public.is_(True)
+        if user_id is not None:
+            access_filter = or_(StoredFile.user_id == user_id, access_filter)
+        result = await self.session.execute(
+            select(StoredFile).where(StoredFile.id == file_id, access_filter)
+        )
+        record = result.scalar_one_or_none()
         if record is None:
             raise FileNotFoundError_(file_id)
         return record

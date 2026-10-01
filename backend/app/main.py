@@ -149,7 +149,7 @@ def _init_ai_manager(app_state: AppState) -> Any:
 
 def _load_domain_modules(app: FastAPI, app_state: AppState) -> None:
     """Import and register all domain modules."""
-    domain_module_packages = ["app.auth", "app.workspace", "app.chat", "app.document", "app.settings", "app.storage"]
+    domain_module_packages = ["app.auth", "app.workspace", "app.chat", "app.document", "app.settings", "app.storage", "app.coding"]
 
     for package_name in domain_module_packages:
         try:
@@ -210,11 +210,13 @@ def _warn_default_secrets(settings: Settings) -> None:
 def _setup_middleware(app: FastAPI, settings: Settings) -> None:
     """Configure application middleware."""
     # CORS — use the property which returns List[str]
-    origins = settings.cors_origins
+    origins = [origin for origin in settings.cors_origins if origin]
+    if settings.APP_ENV.lower() == "production" and (not origins or "*" in origins):
+        raise RuntimeError("Production CORS must list explicit frontend origins")
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=origins or ["*"],
+        allow_origins=origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
