@@ -1,4 +1,4 @@
-const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "/api";
+const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "/api").replace(/\/$/, "");
 import { apiFetch, apiJson } from "./api-client";
 
 function toUrl(path: string): string {
@@ -158,7 +158,7 @@ export function filterEmptyChatMessages(messages: ChatMessageInput[]): ChatMessa
 }
 
 export async function getOllamaModels(): Promise<{ models: { name: string }[] }> {
-  const response = await fetch(toUrl("/models"));
+  const response = await apiFetch("/models");
   return readJson<{ models: { name: string }[] }>(response);
 }
 
@@ -167,7 +167,7 @@ export async function chatWithOllama(
   messages: ChatMessageInput[],
   signal?: AbortSignal,
 ): Promise<Response> {
-  return fetch(toUrl("/chat"), {
+  return apiFetch("/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ model, messages, stream: true }),

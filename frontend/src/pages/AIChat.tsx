@@ -122,7 +122,17 @@ export default function AIChat() {
     const loadModels = async () => {
       try {
         const data = await getOllamaModels()
-        if (data.models) setModels(data.models)
+        if (data.models?.length) {
+          setModels(data.models)
+          // Hosted deployments may have no local Ollama service. Prefer the
+          // configured hosted Gemini model instead of the offline local default.
+          setSelectedModel(current => {
+            const hostedModel = data.models.find(model => model.name.startsWith('gemini-'))
+            return current.startsWith('gemini-') && data.models.some(model => model.name === current)
+              ? current
+              : hostedModel?.name ?? (data.models.some(model => model.name === current) ? current : data.models[0].name)
+          })
+        }
       } catch (e) {
         console.log('Using default models')
       }
@@ -385,16 +395,17 @@ export default function AIChat() {
         { role: 'user' as const, content: userMessage.content + attachmentContext }
       ])
       
-      console.log('Sending request to backend:', { model: selectedModel, messagesCount: messages.length })
-      console.log('Full request payload:', JSON.stringify({ model: selectedModel, messages }))
+      console.info('Sending chat request', { model: selectedModel, messagesCount: messages.length })
       
       const response = await chatWithOllama(selectedModel, messages, controller.signal)
-      console.log('Response status:', response.status, response.statusText)
       
       if (!response.ok) {
-        const errorBody = await response.text()
-        console.error('Response error body:', errorBody)
-        throw new Error(`Server returned ${response.status}: ${response.statusText}. Body: ${errorBody}`)
+        let detail = `The AI service returned ${response.status}. Please try again.`
+        try {
+          const payload = await response.json()
+          detail = payload.detail || payload.message || detail
+        } catch { /* Keep the safe status message for non-JSON errors. */ }
+        throw new Error(detail)
       }
       
       const reader = response.body?.getReader()
@@ -409,10 +420,8 @@ export default function AIChat() {
           if (done) {
             // Process any remaining data in buffer
             if (buffer.trim()) {
-              console.log('Processing remaining buffer:', buffer)
               try {
                 const data = JSON.parse(buffer)
-                console.log('Parsed remaining buffer data:', data)
                 if (data.error) streamError = String(data.error)
                 if (data.message?.content) {
                   fullResponse += data.message.content
@@ -430,16 +439,14 @@ export default function AIChat() {
                     return c
                   }))
                 }
-              } catch (e) {
-                console.error('Failed to parse remaining buffer:', e, 'buffer:', buffer)
+              } catch {
+                console.warn('Chat stream ended with an incomplete response frame')
               }
             }
             break
           }
           
           const chunk = decoder.decode(value, { stream: true })
-          console.log('Raw chunk received:', chunk.length > 200 ? chunk.substring(0, 200) + '...' : chunk)
-          
           buffer += chunk
           const lines = buffer.split('\n')
           
@@ -450,7 +457,6 @@ export default function AIChat() {
             if (line.trim()) {
               try {
                 const data = JSON.parse(line)
-                console.log('Parsed line data:', data)
                 if (data.error) streamError = String(data.error)
                 
                 if (data.message?.content) {
@@ -468,20 +474,15 @@ export default function AIChat() {
                     }
                     return c
                   }))
-                } else if (data.done) {
-                  console.log('Streaming complete. Full response:', fullResponse)
-                } else {
-                  console.log('Unexpected response format:', data)
                 }
-              } catch (e) {
-                console.error('Chunk parse error:', e, 'line:', line)
+              } catch {
+                console.warn('Ignoring malformed chat stream frame')
               }
             }
           }
         }
       }
       if (streamError) throw new Error(streamError)
-      console.log('Final full AI response:', fullResponse)
       
       // If we got an empty response, show a clear error
       if (!fullResponse && !controller.signal.aborted) {
@@ -503,7 +504,6 @@ export default function AIChat() {
         }))
       }
     } catch (error: any) {
-      console.error('Request failed:', error)
       if (controller.signal.aborted || error.name === 'AbortError') {
         setConversations(prev => prev.map(c => c.id === activeConversationId
           ? {
@@ -514,7 +514,7 @@ export default function AIChat() {
             }
           : c))
       } else {
-        const errorMessage = error.response?.data?.detail || error.message || 'Failed to get response'
+        const errorMessage = error.message || 'Failed to get response. Please retry.'
         addToast(errorMessage, 'error')
         setConversations(prev => prev.map(c => {
           if (c.id === activeConversationId) {

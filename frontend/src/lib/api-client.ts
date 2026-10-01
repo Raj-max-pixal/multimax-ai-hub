@@ -1,4 +1,4 @@
-const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "/api";
+const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "/api").replace(/\/$/, "");
 const ACCESS_TOKEN_KEY = "multimax_access_token";
 const REFRESH_TOKEN_KEY = "multimax_refresh_token";
 

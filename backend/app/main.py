@@ -305,19 +305,24 @@ def _setup_legacy_endpoints(app: FastAPI) -> None:
 
                 if stream:
                     async def stream_response():
-                        async for token in app_state.ai_manager.stream(
-                            gen_request,
-                            provider_name=provider_name,
-                        ):
-                            yield json.dumps(
-                                {
-                                    "message": {
-                                        "role": "assistant",
-                                        "content": token,
-                                    },
-                                    "done": False,
-                                }
-                            ) + "\n"
+                        try:
+                            async for token in app_state.ai_manager.stream(
+                                gen_request,
+                                provider_name=provider_name,
+                            ):
+                                yield json.dumps(
+                                    {
+                                        "message": {
+                                            "role": "assistant",
+                                            "content": token,
+                                        },
+                                        "done": False,
+                                    }
+                                ) + "\n"
+                        except Exception as error:
+                            logger.exception("AI stream failed")
+                            yield json.dumps({"error": f"AI response failed: {error}"}) + "\n"
+                            return
                         yield json.dumps({"done": True}) + "\n"
 
                     return StreamingResponse(
