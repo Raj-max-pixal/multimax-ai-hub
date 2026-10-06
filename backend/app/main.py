@@ -498,6 +498,74 @@ def _setup_legacy_endpoints(app: FastAPI) -> None:
 
         return StreamingResponse(stream_response(), media_type="application/json")
 
+    @app.post("/api/coding/assist", tags=["legacy"])
+    async def coding_assist_legacy(request: Request):
+        body = await request.json()
+        task = body.get("task", "generate")
+        prompt = body.get("prompt", "")
+        code = body.get("code", "")
+        language = body.get("language", "TypeScript")
+        model = body.get("model", "qwen3:4b")
+
+        task_prompts = {
+            "generate": "Generate clean, production-ready code for the request.",
+            "fix": "Find and fix bugs. Explain the root cause, then provide corrected code.",
+            "explain": "Explain the code clearly, including flow, important functions, and edge cases.",
+            "refactor": "Refactor for readability, maintainability, performance, and safety. Preserve behavior.",
+            "tests": "Generate meaningful tests with edge cases and explain how to run them.",
+            "readme": "Generate a polished README with setup, usage, scripts, env vars, and architecture notes.",
+            "api": "Design and generate API endpoints, schemas, validation, errors, and examples.",
+            "project": "Create a project plan and starter file structure with key code snippets.",
+            "review": "Review the code for correctness, security, performance, and maintainability.",
+        }
+        code_block = f"\n\nExisting code:\n```{language}\n{code}\n```" if code else ""
+        system_prompt = "You are Multimax AI Hub Coding Assistant. Be practical, concise, and production-minded."
+        full_prompt = (
+            f"Task: {task_prompts.get(task, task)}\n"
+            f"Language/stack: {language}\n"
+            f"User request:\n{prompt}"
+            f"{code_block}\n\n"
+            "Return sections: Summary, Solution, Code, How to run/test, Next improvements."
+        )
+
+        app_state = getattr(app.state, "multimax", None)
+        provider_name = "gemini" if str(model).lower().startswith("gemini-") else None
+        if app_state and app_state.ai_manager:
+            try:
+                from app.ai.base import GenerationRequest
+                gen_req = GenerationRequest(
+                    model=model,
+                    messages=[{"role": "user", "content": full_prompt}],
+                    system_prompt=system_prompt,
+                )
+                resp = await app_state.ai_manager.generate(gen_req, provider_name=provider_name)
+                return {"answer": resp.content, "task": task, "model": model}
+            except Exception as e:
+                logger.error(f"AI Manager coding assist error: {e}")
+
+        # Fallback to Ollama
+        import httpx
+        ollama_url = getattr(get_settings(), "ollama_url", "http://localhost:11434")
+        try:
+            async with httpx.AsyncClient(timeout=None) as client:
+                res = await client.post(
+                    f"{ollama_url}/api/chat",
+                    json={
+                        "model": model,
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": full_prompt},
+                        ],
+                        "stream": False,
+                    },
+                )
+                res.raise_for_status()
+                data = res.json()
+                answer = data.get("message", {}).get("content") or data.get("response") or ""
+                return {"answer": answer, "task": task, "model": model}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Coding assistance failed: {e}")
+
     @app.post("/api/transcribe", tags=["legacy"])
     async def transcribe_audio(file: UploadFile = File(...)):
         """Transcribe audio file (stub — Whisper integration placeholder)."""

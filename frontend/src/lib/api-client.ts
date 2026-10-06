@@ -38,14 +38,21 @@ function buildUrl(path: string): string {
 }
 
 async function parseError(response: Response): Promise<Error> {
-  const contentType = response.headers.get("content-type") ?? "";
-  if (contentType.includes("application/json")) {
-    const data = await response.json();
-    const detail = data?.detail ?? data?.message ?? data?.error;
-    return new Error(detail || `Request failed with status ${response.status}`);
+  try {
+    const text = await response.text();
+    try {
+      const data = JSON.parse(text);
+      const detail = data?.detail ?? data?.message ?? data?.error;
+      if (detail) {
+        return new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+      }
+    } catch {
+      // not JSON
+    }
+    return new Error(text || `Request failed with status ${response.status}`);
+  } catch {
+    return new Error(`Request failed with status ${response.status}`);
   }
-  const text = await response.text();
-  return new Error(text || `Request failed with status ${response.status}`);
 }
 
 async function refreshAccessToken(): Promise<boolean> {
