@@ -1,3 +1,4 @@
+import Logo from '../components/Logo'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
@@ -48,8 +49,8 @@ export default function Login() {
     <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-green-400 to-green-600 rounded-2xl mb-4">
-            <span className="text-3xl font-bold text-white">M</span>
+          <div className="inline-flex items-center justify-center mb-4">
+            <Logo size="lg" withText={false} />
           </div>
           <h1 className="text-3xl font-bold text-slate-100 mb-2">Welcome back</h1>
           <p className="text-slate-400">Sign in to your Multimax account</p>

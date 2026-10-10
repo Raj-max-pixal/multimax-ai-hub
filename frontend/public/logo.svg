@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <defs>
+    <linearGradient id="multiGradEmerald" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34D399" />
+      <stop offset="50%" stop-color="#10B981" />
+      <stop offset="100%" stop-color="#06B6D4" />
+    </linearGradient>
+    <linearGradient id="multiGradCyan" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#06B6D4" />
+      <stop offset="100%" stop-color="#3B82F6" />
+    </linearGradient>
+    <radialGradient id="multiGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#10B981" stop-opacity="0.35" />
+      <stop offset="100%" stop-color="#10B981" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+  <rect width="100" height="100" rx="24" fill="#0B132B" />
+  <rect width="98" height="98" x="1" y="1" rx="23" stroke="url(#multiGradEmerald)" stroke-width="1.5" stroke-opacity="0.4" fill="none" />
+  <circle cx="50" cy="50" r="38" fill="url(#multiGlow)" />
+  <path d="M20 72 V36 L38 24 L50 32 L38 42 L20 36" stroke="url(#multiGradEmerald)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+  <path d="M80 72 V36 L62 24 L50 32 L62 42 L80 36" stroke="url(#multiGradCyan)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+  <path d="M38 42 L50 56 L62 42" stroke="url(#multiGradEmerald)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+  <path d="M50 56 V76" stroke="url(#multiGradCyan)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+  <polygon points="50,44 58,49 50,54 42,49" fill="#10B981" fill-opacity="0.85" />
+  <polygon points="42,49 50,54 50,64 42,59" fill="#059669" fill-opacity="0.9" />
+  <polygon points="58,49 50,54 50,64 58,59" fill="#06B6D4" fill-opacity="0.9" />
+  <circle cx="20" cy="72" r="3.5" fill="#34D399" />
+  <circle cx="80" cy="72" r="3.5" fill="#06B6D4" />
+  <circle cx="50" cy="76" r="3" fill="#38BDF8" />
+  <circle cx="38" cy="24" r="3" fill="#34D399" />
+  <circle cx="62" cy="24" r="3" fill="#06B6D4" />
+</svg>
