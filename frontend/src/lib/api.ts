@@ -6,16 +6,16 @@ async function readJson<T>(response: Response): Promise<T> {
   try {
     data = text ? JSON.parse(text) : null;
   } catch {
-    data = null;
+    // Preserve non-JSON error text without trying to consume the response again.
   }
 
   if (!response.ok) {
-    const detail =
-      data?.detail ?? data?.message ?? data?.error ?? (text || `Request failed: ${response.status}`);
+    const detail = data?.detail ?? data?.message ?? data?.error ?? text ?? `Request failed: ${response.status}`;
     throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
   }
 
-  return (data !== null ? data : text) as T;
+  if (data === null && text) throw new Error("The server returned an invalid response.");
+  return data as T;
 }
 
 export type ChatRole = "system" | "user" | "assistant";
