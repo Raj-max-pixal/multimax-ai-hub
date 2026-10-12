@@ -1,9 +1,4 @@
-const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "/api").replace(/\/$/, "");
 import { apiFetch, apiJson } from "./api-client";
-
-function toUrl(path: string): string {
-  return `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
-}
 
 async function readJson<T>(response: Response): Promise<T> {
   const text = await response.text();
@@ -72,6 +67,14 @@ export async function getCodingProjects(workspaceId: string): Promise<{ items: C
   return apiJson(`/v1/workspaces/${encodeURIComponent(workspaceId)}/projects`);
 }
 
+export async function createCodingWorkspace(name: string): Promise<CodingWorkspace> {
+  return apiJson('/v1/workspaces', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+}
+
+export async function createCodingProject(workspaceId: string, name: string): Promise<CodingProject> {
+  return apiJson(`/v1/workspaces/${encodeURIComponent(workspaceId)}/projects`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+}
+
 export async function getCodingProjectFiles(projectId: string, query = ""): Promise<{ items: CodingProjectFile[] }> {
   return apiJson(`/v1/coding/projects/${encodeURIComponent(projectId)}/files?q=${encodeURIComponent(query)}`);
 }
@@ -100,9 +103,9 @@ export async function runProjectCodingAction(payload: {
   selected_code?: string;
   history?: { role: string; content: string }[];
   model?: string;
-}): Promise<{ mode: "explain" | "suggest"; answer: string } | CodingProposal> {
+}, signal?: AbortSignal): Promise<{ mode: "explain" | "suggest"; answer: string } | CodingProposal> {
   return apiJson(`/v1/coding/projects/${encodeURIComponent(payload.project_id)}/assist`, {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), signal,
   });
 }
 
@@ -194,13 +197,12 @@ export async function runCodingAssist(payload: {
   code?: string;
   language?: string;
   model?: string;
-}): Promise<{ answer: string }> {
-  const response = await apiFetch("/coding/assist", {
+}, signal?: AbortSignal): Promise<{ answer: string }> {
+  return apiJson('/v1/coding/assist', {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(payload), signal,
   });
-  return readJson<{ answer: string }>(response);
 }
 
 export async function runResearchSearch(payload: {
@@ -208,15 +210,12 @@ export async function runResearchSearch(payload: {
   mode: ResearchMode;
   model?: string;
   max_sources?: number;
-}): Promise<{ summary: string; sources: { title: string; url: string; snippet: string }[] }> {
-  const response = await apiFetch("/research/search", {
+}, signal?: AbortSignal): Promise<{ model: string; summary: string; sources: { title: string; url: string; snippet: string }[] }> {
+  return apiJson("/research/search", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(payload), signal,
   });
-  return readJson<{ summary: string; sources: { title: string; url: string; snippet: string }[] }>(
-    response,
-  );
 }
 
 export async function runAgent(payload: {

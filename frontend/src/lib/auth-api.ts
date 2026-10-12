@@ -33,6 +33,7 @@ export async function registerUser(
   display_name?: string,
 ): Promise<UserProfile> {
   const response = await apiJson<ApiUserResponse>("/auth/register", {
+    skipAuthRefresh: true,
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, username, password, display_name }),
@@ -42,6 +43,7 @@ export async function registerUser(
 
 export async function loginUser(username: string, password: string): Promise<ApiAuthResponse> {
   const response = await apiJson<ApiAuthResponse>("/auth/login", {
+    skipAuthRefresh: true,
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, password }),

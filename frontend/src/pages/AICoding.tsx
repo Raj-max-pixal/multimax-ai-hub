@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm'
 import { applyProjectCodingPatch, connectProjectGit, createProjectGitCommit, getCodingProjectFiles, getCodingProjects, getCodingWorkspaces, getProjectGitDiff, getProjectGitStatus, getProjectTerminalCapabilities, readCodingProjectFile, runProjectCodingAction, runProjectTerminalCommand, runProjectTests, searchCodingProjectContent, suggestProjectCommitMessage, uploadCodingProjectFile, getOllamaModels, runCodingAssist, type CodingProject, type CodingProjectFile, type CodingProposal, type CodingTask, type CodingWorkspace, type ProjectGitStatus, type TerminalCapabilities, type TerminalRunResult } from '../lib/api'
 import { useToast } from '../contexts/ToastContext'
 import { cn } from '../lib/utils'
+import { createCodingWorkspace, createCodingProject } from '../lib/api'
 
 type CodingRun = {
   id: string
@@ -12,6 +13,8 @@ type CodingRun = {
   prompt: string
   language: string
   answer: string
+  code?: string
+  model?: string
   createdAt: string
 }
 
@@ -48,11 +51,18 @@ export default function AICoding() {
   const [prompt, setPrompt] = useState(starterPrompts.generate)
   const [code, setCode] = useState('')
   const [language, setLanguage] = useState('TypeScript')
-  const [model, setModel] = useState('qwen3:4b')
-  const [models, setModels] = useState<{ name: string }[]>([{ name: 'qwen3:4b' }, { name: 'phi3:latest' }, { name: 'llama3:latest' }])
+  const [model, setModel] = useState('')
+  const [models, setModels] = useState<{ name: string }[]>([])
+  const [modelError, setModelError] = useState('')
+  const [modelLoadAttempt, setModelLoadAttempt] = useState(0)
+  const aiController = useRef<AbortController | null>(null)
+  const fileRequest = useRef(0)
+  const [newProjectName, setNewProjectName] = useState('')
+  const [creatingProject, setCreatingProject] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [answer, setAnswer] = useState('')
   const [workspaces, setWorkspaces] = useState<CodingWorkspace[]>([])
+  const [workspaceLoading, setWorkspaceLoading] = useState(true)
   const [projects, setProjects] = useState<CodingProject[]>([])
   const [workspaceId, setWorkspaceId] = useState(() => localStorage.getItem('multimax_coding_workspace') || '')
   const [projectId, setProjectId] = useState(() => localStorage.getItem('multimax_coding_project') || '')
@@ -98,6 +108,8 @@ export default function AICoding() {
   })
   const { addToast } = useToast()
 
+  useEffect(() => () => { aiController.current?.abort() }, [])
+
   useEffect(() => {
     localStorage.setItem('multimax_coding_history', JSON.stringify(history))
   }, [history])
@@ -119,28 +131,36 @@ export default function AICoding() {
       const nextId = (data.items || []).some(item => item.id === workspaceId) ? workspaceId : data.items?.[0]?.id || ''
       if (nextId !== workspaceId) setWorkspaceId(nextId)
     }).catch(error => { if (active) setProjectError(error.message || 'Unable to load workspaces') })
+      .finally(() => { if (active) setWorkspaceLoading(false) })
     return () => { active = false }
   }, [])
 
   useEffect(() => {
     let active = true
+    if (creatingProject) return
     if (!workspaceId) { setProjects([]); setProjectId(''); return }
     getCodingProjects(workspaceId).then(data => {
       if (!active) return
       const nextProjects = data.items || []
       setProjects(nextProjects)
-      const nextId = nextProjects.some(item => item.id === projectId) ? projectId : nextProjects[0]?.id || ''
-      if (nextId !== projectId) setProjectId(nextId)
+      setProjectId(current => nextProjects.some(item => item.id === current) ? current : nextProjects[0]?.id || '')
     }).catch(error => { if (active) setProjectError(error.message || 'Unable to load projects') })
     return () => { active = false }
-  }, [workspaceId])
+  }, [workspaceId, creatingProject])
 
   useEffect(() => {
-    let active = true
+    fileRequest.current += 1
     setActivePath('')
     setCode('')
     setProposal(null)
+    setSelectedCode('')
+    setAgentError('')
+    setLastAction(null)
     setCodeSearchResults([])
+  }, [projectId])
+
+  useEffect(() => {
+    let active = true
     if (!projectId) { setFiles([]); return }
     getCodingProjectFiles(projectId, fileQuery).then(data => {
       if (active) { setFiles(data.items || []); setProjectError('') }
@@ -149,10 +169,40 @@ export default function AICoding() {
   }, [projectId, fileQuery])
 
   useEffect(() => {
+    let active = true
+    setModelError('')
     getOllamaModels().then(data => {
-      if (data.models?.length) setModels(data.models)
-    }).catch(() => undefined)
-  }, [])
+      if (!active) return
+      if (!data.models?.length) throw new Error('No coding models are available.')
+      setModels(data.models)
+      setModel(current => data.models.some(item => item.name === current) ? current
+        : data.models.find(item => item.name.startsWith('gemini-') && item.name.includes('flash-lite'))?.name
+          ?? data.models.find(item => item.name.startsWith('gemini-'))?.name ?? data.models[0].name)
+    }).catch(error => { if (active) setModelError(error.message || 'Unable to load coding models') })
+    return () => { active = false }
+  }, [modelLoadAttempt])
+
+  const createProject = async () => {
+    if (creatingProject || !newProjectName.trim()) return
+    setCreatingProject(true)
+    setProjectError('')
+    try {
+      let targetWorkspace = workspaceId
+      if (!targetWorkspace) {
+        const workspace = await createCodingWorkspace('My coding workspace')
+        targetWorkspace = workspace.id
+        setWorkspaces(current => [...current, workspace])
+        setWorkspaceId(workspace.id)
+      }
+      const project = await createCodingProject(targetWorkspace, newProjectName.trim())
+      const data = await getCodingProjects(targetWorkspace)
+      setProjects(data.items)
+      setProjectId(project.id)
+      setNewProjectName('')
+    } catch (error: any) {
+      setProjectError(error.message || 'Unable to create project')
+    } finally { setCreatingProject(false) }
+  }
 
   useEffect(() => {
     let active = true
@@ -160,6 +210,9 @@ export default function AICoding() {
     setGitDiff('')
     setShowGitDiff(false)
     setGitError('')
+    setGitCommitMessage('')
+    setGitConfirmOpen(false)
+    setGitConfirmChecked(false)
     setGitActivity([])
     setGitRepositoryUrl('')
     setGitDefaultBranch('main')
@@ -336,21 +389,25 @@ export default function AICoding() {
   }
 
   const openProjectFile = async (path: string) => {
-    if (!projectId) return
+    if (!projectId || isLoading || aiController.current) return
+    const requestId = ++fileRequest.current
     setFileLoading(true)
     setProjectError('')
     setActivity([{ label: `Reading ${path}`, state: 'active' }])
     try {
       const result = await readCodingProjectFile(projectId, path)
+      if (requestId !== fileRequest.current) return
+      setProposal(null)
       setActivePath(result.path)
       setCode(result.content)
       setSelectedCode('')
       setActivity([{ label: `Read ${path}`, state: 'done' }])
     } catch (error: any) {
+      if (requestId !== fileRequest.current) return
       setProjectError(error.message || `Could not open ${path}`)
       setActivity([{ label: `Could not read ${path}`, state: 'error' }])
     } finally {
-      setFileLoading(false)
+      if (requestId === fileRequest.current) setFileLoading(false)
     }
   }
 
@@ -389,7 +446,8 @@ export default function AICoding() {
   }
 
   const runProjectAction = async (mode: 'explain' | 'suggest' | 'patch', requestText = agentPrompt) => {
-    if (!projectId || isLoading) return
+    if (!projectId || isLoading || aiController.current || !model || fileLoading) return
+    if (!requestText.trim() && mode !== 'patch') requestText = mode === 'explain' ? 'Explain this file and its important edge cases.' : 'Suggest focused improvements for this file.'
     if (!requestText.trim()) { setAgentError('Describe what you want the agent to do.'); return }
     if (mode === 'patch' && !activePath) { setAgentError('Open a project file before proposing a patch.'); return }
     setLastAction({ mode, prompt: requestText })
@@ -403,11 +461,14 @@ export default function AICoding() {
       ...(mode === 'patch' ? [{ label: 'Preparing proposed changes', state: 'active' as const }] : []),
     ])
     const previousTurns = turns
+    const controller = new AbortController()
+    aiController.current = controller
+    const timeout = window.setTimeout(() => controller.abort(), 95000)
     try {
       const result = await runProjectCodingAction({
         project_id: projectId, mode, prompt: requestText, path: activePath || undefined,
         selected_code: selectedCode || undefined, history: previousTurns, model,
-      })
+      }, controller.signal)
       if (result.mode === 'patch') {
         setProposal(result)
         setAnswer(`${result.summary}\n\nProposed diff for ${result.path}`)
@@ -418,9 +479,11 @@ export default function AICoding() {
       }
       setActivity(current => current.map(item => ({ ...item, state: 'done' })))
     } catch (error: any) {
-      setAgentError(error.message || 'Coding request failed. Retry when ready.')
+      setAgentError(error.name === 'AbortError' ? 'Request stopped or timed out. You can retry.' : error.message || 'Coding request failed. Retry when ready.')
       setActivity(current => current.map(item => item.state === 'active' ? { ...item, state: 'error' } : item))
     } finally {
+      window.clearTimeout(timeout)
+      aiController.current = null
       setIsLoading(false)
     }
   }
@@ -444,39 +507,43 @@ export default function AICoding() {
   }
 
   const runAssistant = async () => {
+    if (isLoading || aiController.current || !model) return
     if (!prompt.trim() && !code.trim()) {
       addToast('Add a request or paste code first', 'error')
       return
     }
     setIsLoading(true)
     setAnswer('')
+    const controller = new AbortController()
+    aiController.current = controller
+    const timeout = window.setTimeout(() => controller.abort(), 95000)
     try {
-      const result = await runCodingAssist({ task, prompt, code, language, model })
+      const result = await runCodingAssist({ task, prompt, code, language, model }, controller.signal)
       const output = result.answer || 'No response returned.'
       setAnswer(output)
-      setHistory(prev => [{ id: Date.now().toString(), task, prompt, language, answer: output, createdAt: new Date().toISOString() }, ...prev].slice(0, 20))
+      setHistory(prev => [{ id: Date.now().toString(), task, prompt, code, model, language, answer: output, createdAt: new Date().toISOString() }, ...prev].slice(0, 20))
     } catch (error: any) {
-      addToast(error.message || 'Coding assistant failed', 'error')
-      setAnswer(`Error: ${error.message || 'Coding assistant failed'}`)
+      const message = error.name === 'AbortError' ? 'Request stopped or timed out. Run again to retry.' : error.message || 'Coding assistant failed'
+      addToast(message, 'error')
+      setAnswer(`Error: ${message}`)
     } finally {
+      window.clearTimeout(timeout)
+      aiController.current = null
       setIsLoading(false)
     }
   }
 
   const copy = async (text: string) => {
-    await navigator.clipboard.writeText(text)
-    addToast('Copied', 'success')
+    try {
+      await navigator.clipboard.writeText(text)
+      addToast('Copied', 'success')
+    } catch { addToast('Clipboard access was blocked. Select and copy the text manually.', 'error') }
   }
 
   const exportMarkdown = () => {
     if (!answer) return
-    const blob = new Blob([`# Multimax Coding Assistant\n\nTask: ${task}\nLanguage: ${language}\nModel: ${model}\n\n## Request\n${prompt}\n\n## Code\n\
-\
-\
-${code}\n\
-\
-\
-\n## Answer\n${answer}`], { type: 'text/markdown' })
+    const markdown = [`# Multimax Coding Assistant`, `Task: ${task}`, `Language: ${language}`, `Model: ${model}`, '## Request', prompt, '## Code', '```', code, '```', '## Answer', answer].join('\n\n')
+    const blob = new Blob([markdown], { type: 'text/markdown' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -485,22 +552,28 @@ ${code}\n\
     URL.revokeObjectURL(url)
   }
 
+  const projectBusy = workspaceLoading || isLoading || gitLoading || terminalRunning || uploading || fileLoading || codeSearchLoading || creatingProject
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
           <h1 className="text-3xl font-bold text-slate-800 dark:text-slate-100">AI Coding Assistant</h1>
-          <p className="text-slate-500 dark:text-slate-400">Phase 2: generate, fix, explain, refactor, test, document, and review code.</p>
+          <p className="text-slate-500 dark:text-slate-400">Generate, fix, explain, refactor, test, document, and review code.</p>
         </div>
         <div className="flex gap-3">
           <select value={language} onChange={(e) => setLanguage(e.target.value)} className="rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-4 py-2 text-slate-700 dark:text-slate-200">
             {['TypeScript', 'Python', 'JavaScript', 'React', 'FastAPI', 'Node.js', 'SQL', 'Flutter', 'Java', 'Auto-detect'].map(item => <option key={item}>{item}</option>)}
           </select>
-          <select value={model} onChange={(e) => setModel(e.target.value)} className="rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-4 py-2 text-slate-700 dark:text-slate-200">
+          <select aria-label="Coding model" disabled={isLoading || gitLoading || !models.length} value={model} onChange={(e) => setModel(e.target.value)} className="rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-4 py-2 text-slate-700 dark:text-slate-200">
+            {!models.length && <option value="">Loading models…</option>}
             {models.map(item => <option key={item.name} value={item.name}>{item.name}</option>)}
           </select>
         </div>
       </div>
+
+      {modelError && <div role="alert" className="rounded-xl border border-amber-400 p-3 text-sm text-amber-700 dark:text-amber-300">{modelError} <button className="ml-2 underline" onClick={() => setModelLoadAttempt(value => value + 1)}>Retry loading models</button></div>}
+      {isLoading && aiController.current && <button onClick={() => aiController.current?.abort()} className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm text-white"><Square className="h-4 w-4" />Stop generating</button>}
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-4 dark:border-slate-800">
@@ -509,10 +582,10 @@ ${code}\n\
             <p className="mt-1 text-sm text-slate-500">Choose a project to inspect files and review AI-proposed patches.</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <select aria-label="Workspace" value={workspaceId} onChange={event => { setWorkspaceId(event.target.value); setProjectId('') }} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+            <select aria-label="Workspace" disabled={projectBusy} value={workspaceId} onChange={event => { setWorkspaceId(event.target.value); setProjectId('') }} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
               <option value="">Select workspace</option>{workspaces.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
             </select>
-            <select aria-label="Project" value={projectId} onChange={event => setProjectId(event.target.value)} disabled={!projects.length} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+            <select aria-label="Project" value={projectId} onChange={event => setProjectId(event.target.value)} disabled={!projects.length || projectBusy} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
               <option value="">Select project</option>{projects.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
             </select>
             {projectId && <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">
@@ -521,6 +594,11 @@ ${code}\n\
             </label>}
           </div>
         </div>
+        <form onSubmit={event => { event.preventDefault(); void createProject() }} className="flex flex-wrap gap-2 border-b border-slate-200 p-4 dark:border-slate-800">
+          <input aria-label="New project name" maxLength={100} value={newProjectName} onChange={event => setNewProjectName(event.target.value)} placeholder="New project name" disabled={projectBusy} className="min-w-0 flex-1 rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-800 dark:bg-slate-800 dark:text-slate-100" />
+          <button type="submit" disabled={projectBusy || !newProjectName.trim()} className="rounded-lg bg-green-600 px-4 py-2 text-sm text-white disabled:opacity-50">{creatingProject ? 'Creating…' : 'Create project'}</button>
+          {!workspaceId && <p className="w-full text-xs text-slate-500">A personal coding workspace will be created with your project.</p>}
+        </form>
         {projectError && <div role="alert" className="m-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">{projectError}</div>}
         {activeProject ? <div className="grid min-h-[420px] lg:grid-cols-[260px_minmax(0,1fr)]">
           <aside className="border-b border-slate-200 p-3 dark:border-slate-800 lg:border-b-0 lg:border-r">
@@ -643,7 +721,7 @@ ${code}\n\
           <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={5} className="w-full rounded-xl bg-slate-100 dark:bg-slate-800 border-0 p-4 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-green-500" />
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">Code / error / project context</label>
           <textarea value={code} onChange={(e) => setCode(e.target.value)} rows={14} placeholder="Paste code, stack trace, API requirements, or repository notes..." className="font-mono text-sm w-full rounded-xl bg-slate-950 text-slate-100 border-0 p-4 focus:outline-none focus:ring-2 focus:ring-green-500" />
-          <button onClick={runAssistant} disabled={isLoading} className="inline-flex items-center gap-2 rounded-xl bg-green-500 px-5 py-3 font-semibold text-white hover:bg-green-600 disabled:opacity-60">
+          <button onClick={runAssistant} disabled={isLoading || !model} className="inline-flex items-center gap-2 rounded-xl bg-green-500 px-5 py-3 font-semibold text-white hover:bg-green-600 disabled:opacity-60">
             <Play className="w-4 h-4" /> {isLoading ? 'Thinking...' : 'Run Coding Assistant'}
           </button>
         </div>
@@ -668,7 +746,7 @@ ${code}\n\
         <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5">
           <h2 className="font-semibold text-slate-800 dark:text-slate-100 mb-4">Recent coding runs</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {history.map(item => <button key={item.id} onClick={() => { setTask(item.task); setPrompt(item.prompt); setLanguage(item.language); setAnswer(item.answer) }} className="text-left rounded-xl bg-slate-100 dark:bg-slate-800 p-3 hover:ring-2 hover:ring-green-500"><p className="font-medium text-slate-800 dark:text-slate-100">{item.task}</p><p className="text-xs text-slate-500 truncate">{item.prompt}</p></button>)}
+            {history.map(item => <button disabled={isLoading} key={item.id} onClick={() => { setTask(item.task); setPrompt(item.prompt); setCode(item.code || ''); setLanguage(item.language); setAnswer(item.answer); if (item.model && models.some(model => model.name === item.model)) setModel(item.model) }} className="text-left rounded-xl bg-slate-100 dark:bg-slate-800 p-3 hover:ring-2 hover:ring-green-500"><p className="font-medium text-slate-800 dark:text-slate-100">{item.task}</p><p className="text-xs text-slate-500 truncate">{item.prompt}</p></button>)}
           </div>
         </div>
       )}

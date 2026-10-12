@@ -36,7 +36,9 @@ def upgrade() -> None:
         "users",
         sa.Column("bio", sa.Text(), nullable=False, server_default=""),
     )
-    op.alter_column("users", "bio", server_default=None)
+    # SQLite cannot ALTER COLUMN; retain the harmless insert default there.
+    if connection.dialect.name != "sqlite":
+        op.alter_column("users", "bio", server_default=None)
     op.create_index(
         "uq_users_username_lower",
         "users",

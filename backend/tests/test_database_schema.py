@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import sqlite3
 from pathlib import Path
 
@@ -8,7 +9,7 @@ from alembic.config import Config
 from sqlalchemy.orm import configure_mappers
 
 from app.core.config import Settings, get_settings
-from app.core.database import Base
+from app.core.database import Base, DatabaseManager
 
 # Register the complete model graph for mapper and metadata assertions.
 import app.auth.models  # noqa: F401, E402
@@ -75,5 +76,46 @@ def test_initial_migration_round_trip(tmp_path: Path, monkeypatch) -> None:
 
         command.downgrade(config, "base")
         command.upgrade(config, "head")
+    finally:
+        get_settings.cache_clear()
+
+
+def test_legacy_sqlite_profile_repair_preserves_login(tmp_path, monkeypatch):
+    from app.auth.service import AuthService, _hash_password
+
+    database_path = tmp_path / "legacy.db"
+    monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///{database_path.as_posix()}")
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("APP_DEBUG", "false")
+    get_settings.cache_clear()
+    config = Config(str(Path(__file__).resolve().parents[1] / "migrations" / "alembic.ini"))
+    try:
+        command.upgrade(config, "3ff0865da455")
+        with sqlite3.connect(database_path) as connection:
+            connection.execute("DROP TABLE alembic_version")
+            connection.execute(
+                "INSERT INTO users (id, email, username, hashed_password, role, is_active) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                ("legacy-user", "legacy@example.com", "legacy", _hash_password("Test-password-123!"), "USER", 1),
+            )
+        manager = DatabaseManager(get_settings())
+        monkeypatch.setattr("app.auth.service.get_database", lambda: manager)
+
+        async def verify():
+            await manager.initialize()
+            try:
+                await manager.create_all()
+                await manager.create_all()  # Repair must be idempotent.
+                result = await AuthService().login("legacy", "Test-password-123!")
+                assert result["user"]["id"] == "legacy-user"
+                assert result["user"]["bio"] == ""
+                assert result["access_token"]
+                import pytest
+                with pytest.raises(ValueError):
+                    await AuthService().login("legacy", "wrong-password")
+            finally:
+                await manager.close()
+
+        asyncio.run(verify())
     finally:
         get_settings.cache_clear()

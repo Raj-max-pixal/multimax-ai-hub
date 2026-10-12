@@ -1,6 +1,6 @@
 import Logo from '../components/Logo'
-import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -19,9 +19,16 @@ type LoginFormData = z.infer<typeof loginSchema>
 export default function Login() {
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
-  const { signIn } = useAuth()
+  const { signIn, user } = useAuth()
   const { addToast } = useToast()
   const navigate = useNavigate()
+  const location = useLocation()
+  const from = location.state?.from
+  const returnTo = typeof from === 'string' && from.startsWith('/') && !from.startsWith('//') && !from.includes('\\') && !/^\/(login|signup)([/?#]|$)/.test(from) ? from : '/'
+
+  useEffect(() => {
+    if (user) navigate(returnTo, { replace: true })
+  }, [user, navigate, returnTo])
 
   const {
     register,
@@ -37,7 +44,7 @@ export default function Login() {
       const { error } = await signIn(data.username, data.password)
       if (error) throw error
       addToast('Login successful!', 'success')
-      navigate('/')
+      navigate(returnTo, { replace: true })
     } catch (error: any) {
       addToast(error.message || 'Login failed', 'error')
     } finally {
@@ -54,6 +61,7 @@ export default function Login() {
           </div>
           <h1 className="text-3xl font-bold text-slate-100 mb-2">Welcome back</h1>
           <p className="text-slate-400">Sign in to your Multimax account</p>
+          {returnTo !== '/' && <p role="status" className="mt-2 text-sm text-slate-400">Sign in to continue. You’ll return to the page you were using.</p>}
         </div>
 
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8">

@@ -54,7 +54,7 @@ function App() {
     <BrowserRouter>
       <Suspense fallback={<PageLoader />}>
         <Routes>
-          <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
+          <Route path="/login" element={<Login />} />
           <Route path="/signup" element={user ? <Navigate to="/" replace /> : <Signup />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
 

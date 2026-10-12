@@ -18,7 +18,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncGenerator, AsyncIterator, Optional
 
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     AsyncEngine,
@@ -160,6 +160,16 @@ class DatabaseManager:
             raise RuntimeError("Database not initialized. Call initialize() first.")
         async with self._engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+            # create_all does not add columns to existing local databases.
+            # Keep this narrow compatibility repair out of production/migrated DBs.
+            if self._settings.database_auto_create and conn.dialect.name == "sqlite":
+                def repair_legacy_profile(connection):
+                    inspector = inspect(connection)
+                    if inspector.has_table("alembic_version") or not inspector.has_table("users"):
+                        return
+                    if "bio" not in {column["name"] for column in inspector.get_columns("users")}:
+                        connection.execute(text("ALTER TABLE users ADD COLUMN bio TEXT NOT NULL DEFAULT ''"))
+                await conn.run_sync(repair_legacy_profile)
         logger.info("All database tables created/verified")
 
     async def drop_all(self) -> None:
