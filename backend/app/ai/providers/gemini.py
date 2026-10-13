@@ -61,7 +61,7 @@ class GeminiProvider(BaseProvider):
                 raise InvalidApiKeyError(provider_name=self._name)
             self._http_client = httpx.AsyncClient(
                 base_url=self._base_url,
-                timeout=httpx.Timeout(self._config.timeout or 60.0),
+                timeout=httpx.Timeout(self._config.timeout or 60.0, connect=10.0),
                 headers={"x-goog-api-key": key},
             )
         return self._http_client

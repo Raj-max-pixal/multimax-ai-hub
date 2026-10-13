@@ -7,6 +7,7 @@ import asyncio
 import hashlib
 import json
 import re
+import httpx
 from pathlib import Path, PurePosixPath
 from typing import Any, Literal
 from uuid import uuid4
@@ -88,6 +89,15 @@ async def _generate_coding(request: Request, generation: GenerationRequest):
         raise HTTPException(status_code=429, detail="The model quota or rate limit was reached. Wait and retry.") from exc
     except TimeoutError as exc:
         raise HTTPException(status_code=504, detail="The coding model timed out. Try a smaller request or another model.") from exc
+    except ProviderUnavailableError as exc:
+        cause = exc.__cause__
+        if isinstance(cause, httpx.TimeoutException):
+            raise HTTPException(status_code=504, detail="The coding model timed out. Try a smaller request or another model.") from exc
+        upstream_status = getattr(getattr(cause, "response", None), "status_code", None)
+        logger.warning("Coding provider unavailable; upstream HTTP status: %s", upstream_status)
+        if upstream_status in {502, 503, 504}:
+            raise HTTPException(status_code=503, detail="The selected model is temporarily busy. Select another model or retry shortly.") from exc
+        raise HTTPException(status_code=502, detail="Cannot reach the coding model. Check that the selected provider is running and retry.") from exc
     except Exception as exc:
         upstream_status = getattr(getattr(exc.__cause__, "response", None), "status_code", None)
         logger.warning("Coding provider failed: %s; upstream HTTP status: %s", type(exc).__name__, upstream_status)

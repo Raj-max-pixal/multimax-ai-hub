@@ -2,6 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+import httpx
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -90,6 +91,24 @@ def test_empty_model_answer_is_a_retryable_failure(coding_client):
     client, manager, _ = coding_client
     manager.generate.return_value.content = "  "
     assert client.post("/api/v1/coding/assist", json={"task": "fix", "prompt": "help"}).status_code == 502
+
+
+@pytest.mark.parametrize("cause,status", [
+    (httpx.ReadTimeout("private-value"), 504),
+    (httpx.ConnectTimeout("private-value"), 504),
+    (httpx.ConnectError("private-value"), 502),
+])
+def test_wrapped_transport_failures_preserve_timeout_status(coding_client, cause, status):
+    client, manager, _ = coding_client
+    error = ProviderUnavailableError(message="private-value")
+    error.__cause__ = cause
+    manager.generate.side_effect = error
+    result = client.post("/api/v1/coding/assist", json={"task": "explain", "code": "print(1)"})
+    assert result.status_code == status
+    assert "private-value" not in result.text
+    assert manager.generate.call_count == 1
+    if status == 504:
+        assert "timed out" in result.json()["detail"]
 
 
 @pytest.mark.parametrize("recovers", [False, True])

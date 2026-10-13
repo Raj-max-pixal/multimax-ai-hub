@@ -45,6 +45,17 @@ def test_payload_filters_empty_messages_and_maps_roles() -> None:
 
 
 @pytest.mark.asyncio
+async def test_client_bounds_connection_time_without_shortening_generation() -> None:
+    provider = GeminiProvider(ProviderConfig(name="gemini", api_key="test-key", timeout=90))
+    try:
+        client = provider._get_client()
+        assert client.timeout.connect == 10.0
+        assert client.timeout.read == 90.0
+    finally:
+        await provider.close()
+
+
+@pytest.mark.asyncio
 async def test_generate_maps_response_and_usage() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.headers["x-goog-api-key"] == "test-key"
