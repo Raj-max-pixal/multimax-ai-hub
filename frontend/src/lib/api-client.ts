@@ -1,3 +1,5 @@
+import { readJsonResponse } from "./http-response";
+
 const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "/api").replace(/\/$/, "");
 const ACCESS_TOKEN_KEY = "multimax_access_token";
 const REFRESH_TOKEN_KEY = "multimax_refresh_token";
@@ -35,24 +37,6 @@ function buildUrl(path: string): string {
     return path;
   }
   return `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
-}
-
-async function parseError(response: Response): Promise<Error> {
-  try {
-    const text = await response.text();
-    try {
-      const data = JSON.parse(text);
-      const detail = data?.detail ?? data?.message ?? data?.error;
-      if (detail) {
-        return new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
-      }
-    } catch {
-      // not JSON
-    }
-    return new Error(text || `Request failed with status ${response.status}`);
-  } catch {
-    return new Error(`Request failed with status ${response.status}`);
-  }
 }
 
 async function refreshAccessToken(): Promise<boolean> {
@@ -120,8 +104,5 @@ export async function apiFetch(path: string, init: RequestInitWithAuth = {}): Pr
 
 export async function apiJson<T>(path: string, init: RequestInitWithAuth = {}): Promise<T> {
   const response = await apiFetch(path, init);
-  if (!response.ok) {
-    throw await parseError(response);
-  }
-  return (await response.json()) as T;
+  return readJsonResponse<T>(response);
 }

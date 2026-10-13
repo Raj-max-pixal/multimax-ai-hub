@@ -12,6 +12,7 @@ import os
 from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
+import httpx
 from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -344,10 +345,12 @@ def _setup_legacy_endpoints(app: FastAPI) -> None:
 
         # Fallback: direct Ollama call
         ollama_url = getattr(get_settings(), "ollama_url", "http://localhost:11434")
-        try:
-            async with httpx.AsyncClient(timeout=None) as client:
-                if stream:
-                    async def proxy_stream():
+        timeout = httpx.Timeout(120.0, connect=10.0)
+        if stream:
+            async def proxy_stream():
+                try:
+                    # The generator owns the client until streaming ends or is cancelled.
+                    async with httpx.AsyncClient(timeout=timeout) as client:
                         async with client.stream(
                             "POST",
                             f"{ollama_url}/api/chat",
@@ -356,17 +359,21 @@ def _setup_legacy_endpoints(app: FastAPI) -> None:
                             response.raise_for_status()
                             async for chunk in response.aiter_bytes():
                                 yield chunk
+                except httpx.HTTPError:
+                    logger.warning("Local AI fallback stream failed")
+                    yield json.dumps({"error": "Local AI service is unavailable. Check that Ollama is running and retry."}) + "\n"
 
-                    return StreamingResponse(proxy_stream(), media_type="application/json")
-                else:
-                    response = await client.post(
-                        f"{ollama_url}/api/chat",
-                        json={"model": model, "messages": messages, "stream": False},
-                    )
-                    response.raise_for_status()
-                    return JSONResponse(content=response.json())
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Chat failed: {e}")
+            return StreamingResponse(proxy_stream(), media_type="application/x-ndjson")
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.post(
+                    f"{ollama_url}/api/chat",
+                    json={"model": model, "messages": messages, "stream": False},
+                )
+                response.raise_for_status()
+                return JSONResponse(content=response.json())
+        except httpx.HTTPError:
+            raise HTTPException(status_code=503, detail="Local AI service is unavailable. Check that Ollama is running and retry.")
 
     @app.post("/api/documents/upload", tags=["legacy"])
     async def upload_documents(files: List[UploadFile] = File(...)):

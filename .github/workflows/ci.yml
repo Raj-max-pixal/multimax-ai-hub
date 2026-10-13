@@ -83,6 +83,9 @@ jobs:
       - name: Run TypeScript check
         run: npx tsc --noEmit
 
+      - name: Test API response handling
+        run: npm test
+
   test-backend:
     name: Test Backend
     runs-on: ubuntu-latest

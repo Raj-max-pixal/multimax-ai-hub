@@ -1,22 +1,6 @@
 import { apiFetch, apiJson } from "./api-client";
 
-async function readJson<T>(response: Response): Promise<T> {
-  const text = await response.text();
-  let data: any = null;
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch {
-    // Preserve non-JSON error text without trying to consume the response again.
-  }
-
-  if (!response.ok) {
-    const detail = data?.detail ?? data?.message ?? data?.error ?? text ?? `Request failed: ${response.status}`;
-    throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
-  }
-
-  if (data === null && text) throw new Error("The server returned an invalid response.");
-  return data as T;
-}
+import { readJsonResponse as readJson } from "./http-response";
 
 export type ChatRole = "system" | "user" | "assistant";
 export type ChatMessageInput = { role: ChatRole; content: string; images?: string[] };

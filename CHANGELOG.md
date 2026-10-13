@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.4.1-unreleased] - 2026-07-23 — Stability and Build Recovery
+
+Integration note (2026-10-12): these historical branch changes are now consolidated
+with the newer API/auth clients. The canonical backend startup remains
+`uvicorn app.main:create_app --factory`; health tests target the modular app.
+
+### Fixed
+- Restored missing frontend shared library modules:
+  - `frontend/src/lib/api.ts`
+  - `frontend/src/lib/api-client.ts`
+  - `frontend/src/lib/auth-api.ts`
+  - `frontend/src/lib/utils.ts`
+- Fixed modular backend runtime bug in `backend/app/main.py`:
+  - Added missing `httpx` import used by legacy-compatible chat fallback
+  - Exposed `app = create_app()` so `uvicorn app.main:app --reload` works
+- Fixed backend test command path mismatch by adding `backend/tests/` with health/model endpoint tests.
+
+### Validation
+- `python -m pytest tests -v --asyncio-mode=auto` (from `backend/`) ✅
+- `npx tsc --noEmit` (from `frontend/`) ✅
+- `npm run build` (from `frontend/`) ✅
+
+### Notes
+- Repository-wide backend Ruff lint still reports existing pre-existing issues outside this change scope.
+
+---
+
 ## [0.4.0] - 2026-07-11 — Phase 0: Modular Architecture Foundation
 
 ### Added
